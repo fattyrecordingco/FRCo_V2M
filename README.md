@@ -41,10 +41,16 @@ AI-assisted music creation software built as a local-first experiment, then rele
 ```powershell
 python -m pip install -e .[dev]
 python -m v2m.cli generate --style pop --key "C major" --bpm 120 --bars 8 --complexity 5 --seed 42 --output out/idea.mid
+python -m v2m.cli analyze --input .\path\to\idea.wav --scale-mode auto --genre-tags "trap,lofi"
 pytest
 ```
 
 Generated MIDI files can be dragged into Ableton/FL Studio for manual validation.
+`analyze` exports a local project folder under `projects/` with:
+- raw and cleaned audio
+- `melody.mid`, `drums.mid`, `combined.mid`
+- `analysis.json`
+- `recipe.md`
 
 ## Available Styles
 - `pop`

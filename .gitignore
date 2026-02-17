@@ -23,6 +23,7 @@ yarn-error.log*
 dist/
 build/
 out/
+projects/
 coverage/
 
 # Local environment files

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Iterable
 
 from mido import Message, MetaMessage, MidiFile, MidiTrack, bpm2tempo
 
@@ -50,23 +51,33 @@ def _append_note_events(track: MidiTrack, events: list[NoteEvent], ticks_per_bea
     track.append(MetaMessage("end_of_track", time=0))
 
 
-def export_idea_to_midi(idea: GeneratedIdea, output_path: str | Path) -> Path:
-    """Export a GeneratedIdea to a MIDI file and return the written path."""
+def export_tracks_to_midi(
+    *,
+    bpm: int,
+    output_path: str | Path,
+    track_specs: Iterable[tuple[str, list[NoteEvent]]],
+) -> Path:
+    """Export one MIDI file with one track per (track_name, note_events)."""
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
 
     midi = MidiFile(ticks_per_beat=480)
-    chord_track = MidiTrack()
-    melody_track = MidiTrack()
-    midi.tracks.append(chord_track)
-    midi.tracks.append(melody_track)
-
-    chord_track.append(MetaMessage("track_name", name="Chords", time=0))
-    chord_track.append(MetaMessage("set_tempo", tempo=bpm2tempo(idea.bpm), time=0))
-    _append_note_events(chord_track, idea.chords, midi.ticks_per_beat)
-
-    melody_track.append(MetaMessage("track_name", name="Melody", time=0))
-    _append_note_events(melody_track, idea.melody, midi.ticks_per_beat)
+    for index, (track_name, events) in enumerate(track_specs):
+        track = MidiTrack()
+        midi.tracks.append(track)
+        track.append(MetaMessage("track_name", name=track_name, time=0))
+        if index == 0:
+            track.append(MetaMessage("set_tempo", tempo=bpm2tempo(bpm), time=0))
+        _append_note_events(track, events, midi.ticks_per_beat)
 
     midi.save(output)
     return output
+
+
+def export_idea_to_midi(idea: GeneratedIdea, output_path: str | Path) -> Path:
+    """Export a GeneratedIdea to a MIDI file and return the written path."""
+    return export_tracks_to_midi(
+        bpm=idea.bpm,
+        output_path=output_path,
+        track_specs=[("Chords", idea.chords), ("Melody", idea.melody)],
+    )
