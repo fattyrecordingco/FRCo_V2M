@@ -68,6 +68,26 @@ class ProducerCopilotAgent:
             "- Generate a quick trap sketch in A minor at 140 BPM."
         )
 
+    def validate_connection(self) -> tuple[bool, str]:
+        """
+        Validate API key/model availability with a tiny completion call.
+        Returns (is_valid, message).
+        """
+        if not self.llm_enabled:
+            return False, "LLM client not initialized. Set OPENAI_API_KEY first."
+
+        assert self._client is not None
+        try:
+            self._client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+                temperature=0,
+            )
+            return True, f"Connected successfully with model '{self.model}'."
+        except Exception as exc:  # noqa: BLE001
+            return False, self._friendly_error(exc)
+
     def run_turn(
         self,
         *,
@@ -86,12 +106,19 @@ class ProducerCopilotAgent:
                 active_project=active_project,
             )
 
-        return self._run_llm_turn(
-            chat_history=chat_history,
-            user_prompt=user_prompt,
-            audio_inputs=audio_inputs,
-            active_project=active_project,
-        )
+        try:
+            return self._run_llm_turn(
+                chat_history=chat_history,
+                user_prompt=user_prompt,
+                audio_inputs=audio_inputs,
+                active_project=active_project,
+            )
+        except Exception as exc:  # noqa: BLE001
+            return AgentTurnResult(
+                assistant_text=self._friendly_error(exc),
+                active_project=active_project,
+                error=str(exc),
+            )
 
     def _system_prompt(self, *, audio_ids: list[str], active_project: Path | None) -> str:
         active_text = str(active_project) if active_project else "none"
@@ -454,6 +481,27 @@ class ProducerCopilotAgent:
             )
 
         return {"error": f"Unknown tool: {name}"}, current_project, sketch
+
+    def _friendly_error(self, exc: Exception) -> str:
+        text = str(exc).strip()
+        lower = text.lower()
+        if "incorrect api key" in lower or "invalid api key" in lower or "authentication" in lower:
+            return (
+                "OpenAI authentication failed. Please rotate your key and paste a valid key in sidebar "
+                "or set OPENAI_API_KEY before launch."
+            )
+        if "model" in lower and ("not found" in lower or "does not exist" in lower or "access" in lower):
+            return (
+                f"The selected model '{self.model}' is unavailable for this account. "
+                "Try a different model name in sidebar (for example `gpt-4.1-mini`)."
+            )
+        if "rate limit" in lower or "quota" in lower or "billing" in lower:
+            return (
+                "OpenAI request limit/billing issue detected. Check your platform quota and billing settings."
+            )
+        if "connection" in lower or "timeout" in lower:
+            return "Network/API connection issue. Please retry in a moment."
+        return f"OpenAI error: {text}"
 
 
 def _safe_json(path: Path) -> dict:

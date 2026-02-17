@@ -275,6 +275,19 @@ def _sidebar_controls() -> None:
         )
         st.caption("Set `OPENAI_API_KEY` to enable real LLM tool-calling responses.")
 
+        if st.button("Test API Key", use_container_width=True):
+            tester = ProducerCopilotAgent(
+                api_key=st.session_state.get("api_key", ""),
+                model=st.session_state.get("llm_model", "gpt-4.1-mini"),
+                projects_dir=DEFAULT_PROJECTS_DIR,
+                sketch_dir="out/ui",
+            )
+            ok, message = tester.validate_connection()
+            if ok:
+                st.success(message)
+            else:
+                st.error(message)
+
         st.markdown("---")
         st.markdown("### Context")
         st.write(f"Audio Inputs: {len(st.session_state['audio_inputs'])}")
@@ -368,7 +381,10 @@ def _handle_user_turn() -> None:
     else:
         content = result.assistant_text
 
-    _push_message("assistant", content, **meta)
+    if result.error:
+        _push_message("assistant", content + "\n\nTroubleshooting: click `Test API Key` in sidebar.", **meta)
+    else:
+        _push_message("assistant", content, **meta)
     st.rerun()
 
 
