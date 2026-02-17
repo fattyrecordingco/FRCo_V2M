@@ -60,10 +60,8 @@ Generated MIDI files can be dragged into Ableton/FL Studio for manual validation
 - `recipe.md`
 
 UI features:
-- `Home`: workflow overview
-- `Generate MIDI Idea`: prompt-style MIDI ideation
-- `Analyze Audio`: record from mic or upload hum/beatbox audio and build full project outputs
-- `Producer Assistant`: get arrangement, layering, and progression suggestions
+- `Studio Copilot`: primary chat-like workflow for recording/uploading and analyzing audio ideas
+- `Extensions`: fast MIDI generator and producer brainstorm tools
 - `Project Explorer`: reopen and download prior project artifacts
 
 Detailed first-time setup:

@@ -25,15 +25,15 @@ Go to:
 `http://localhost:8501`
 
 ## 5) First usage path
-1. `Analyze Audio` page:
+1. `Studio Copilot` page:
    - record from mic or upload a file
    - choose scale mode (`auto` or `manual`)
-   - press `Analyze and Build Project`
+   - press `Analyze Idea and Build Project`
 2. `Project Explorer` page:
    - inspect generated project folders
    - download `melody.mid`, `drums.mid`, `combined.mid`
-3. `Producer Assistant` page:
-   - get arrangement/layering route suggestions
+3. `Extensions` page:
+   - use fast generator and producer brainstorm tools when needed
 
 ## Notes
 - Generated project artifacts are saved under `projects/`.
