@@ -40,12 +40,14 @@ AI-assisted music creation software built as a local-first experiment, then rele
 ## Quick Start
 ```powershell
 .\scripts\setup_first_time.ps1
+$env:OPENAI_API_KEY="your_openai_api_key"
 .\scripts\start_ui.ps1
 ```
 
 Manual commands:
 ```powershell
 python -m pip install -e .[dev]
+$env:OPENAI_API_KEY="your_openai_api_key"
 python -m v2m.cli generate --style pop --key "C major" --bpm 120 --bars 8 --complexity 5 --seed 42 --output out/idea.mid
 python -m v2m.cli analyze --input .\path\to\idea.wav --scale-mode auto --genre-tags "trap,lofi"
 python -m streamlit run src/v2m/ui_app.py
@@ -60,9 +62,12 @@ Generated MIDI files can be dragged into Ableton/FL Studio for manual validation
 - `recipe.md`
 
 UI features:
-- `Studio Copilot`: dark, high-contrast chatbot workflow for recording/uploading and analyzing audio ideas
-- `Extensions`: fast MIDI generator and producer brainstorm tools
-- `Project Explorer`: reopen and download prior project artifacts
+- `Producer Copilot Chat`: primary ChatGPT-like interface
+- chat input supports text + audio/file attachments
+- real LLM tool-calling for:
+  - audio analysis to MIDI + recipe
+  - arrangement/harmony/groove guidance
+  - quick sketch generation
 
 Detailed first-time setup:
 - `docs/FIRST_TIME_SETUP.md`

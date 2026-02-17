@@ -17,6 +17,7 @@ This will:
 
 ## 3) Start the app
 ```powershell
+$env:OPENAI_API_KEY="your_openai_api_key"
 .\scripts\start_ui.ps1
 ```
 
@@ -25,15 +26,12 @@ Go to:
 `http://localhost:8501`
 
 ## 5) First usage path
-1. `Studio Copilot` page:
-   - record from mic or upload a file
-   - choose scale mode (`auto` or `manual`)
-   - press `Analyze Idea and Build Project`
-2. `Project Explorer` page:
-   - inspect generated project folders
-   - download `melody.mid`, `drums.mid`, `combined.mid`
-3. `Extensions` page:
-   - use fast generator and producer brainstorm tools when needed
+1. In chat input, upload/record audio and send:
+   - `Analyze this and build a project pack`
+2. Ask follow-ups:
+   - `suggest chord progression options`
+   - `give me arrangement and layering plan`
+3. Download generated MIDI directly from assistant responses.
 
 ## Notes
 - Generated project artifacts are saved under `projects/`.
