@@ -60,7 +60,7 @@ Generated MIDI files can be dragged into Ableton/FL Studio for manual validation
 - `recipe.md`
 
 UI features:
-- `Studio Copilot`: primary chat-like workflow for recording/uploading and analyzing audio ideas
+- `Studio Copilot`: dark, high-contrast chatbot workflow for recording/uploading and analyzing audio ideas
 - `Extensions`: fast MIDI generator and producer brainstorm tools
 - `Project Explorer`: reopen and download prior project artifacts
 

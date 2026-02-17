@@ -1,4 +1,4 @@
-﻿"""Interactive UI for the V2M prototype with a chat-like musician workflow."""
+﻿"""Dark, chat-first UI for the V2M producer copilot."""
 
 from __future__ import annotations
 
@@ -6,11 +6,10 @@ from datetime import datetime
 import json
 from pathlib import Path
 import re
-import textwrap
 
 import streamlit as st
 
-from v2m.audio_to_midi import analyze_audio_to_project
+from v2m.audio_to_midi import PrototypeProjectResult, analyze_audio_to_project
 from v2m.generator import STYLE_PRESETS, generate_idea
 from v2m.midi_export import export_idea_to_midi
 from v2m.music_theory import list_supported_keys
@@ -20,6 +19,9 @@ UI_UPLOAD_DIR = UI_OUT_DIR / "uploads"
 DEFAULT_PROJECTS_DIR = Path("projects")
 
 
+ChatMessage = dict[str, str]
+
+
 def _slugify(value: str) -> str:
     normalized = re.sub(r"[^a-zA-Z0-9]+", "-", value.strip().lower()).strip("-")
     return normalized or "session"
@@ -27,68 +29,6 @@ def _slugify(value: str) -> str:
 
 def _timestamp() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
-
-
-def _styled_header() -> None:
-    st.markdown(
-        """
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;700;800&display=swap');
-:root {
-  --ink: #101820;
-  --surface: rgba(255, 255, 255, 0.84);
-  --line: rgba(16, 24, 32, 0.16);
-  --mint: #74f0c5;
-  --sun: #ffc983;
-  --sky: #a7d7ff;
-}
-
-html, body, [class*="css"] {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-  color: var(--ink);
-}
-
-[data-testid="stAppViewContainer"] {
-  background:
-    radial-gradient(circle at 12% 20%, rgba(116, 240, 197, 0.26), transparent 24%),
-    radial-gradient(circle at 85% 10%, rgba(167, 215, 255, 0.34), transparent 28%),
-    radial-gradient(circle at 76% 92%, rgba(255, 201, 131, 0.26), transparent 24%),
-    linear-gradient(145deg, #f6f8f2 0%, #f8f2ea 45%, #ecf6ff 100%);
-}
-
-.v2m-card {
-  border: 1px solid var(--line);
-  border-radius: 18px;
-  padding: 14px 16px;
-  background: var(--surface);
-}
-
-.v2m-chat {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px 14px;
-  margin-bottom: 8px;
-  background: rgba(255, 255, 255, 0.75);
-}
-
-.v2m-chat.user {
-  border-left: 5px solid #83c6ff;
-}
-
-.v2m-chat.copilot {
-  border-left: 5px solid #6fe6b9;
-}
-
-.v2m-metric {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 10px 12px;
-  background: rgba(255, 255, 255, 0.7);
-}
-</style>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 def _read_text(path: Path) -> str:
@@ -104,144 +44,268 @@ def _safe_json(path: Path) -> dict:
         return {}
 
 
-def _download_button(path: Path, label: str, mime: str) -> None:
-    if path.exists():
-        st.download_button(
-            label=label,
-            data=path.read_bytes(),
-            file_name=path.name,
-            mime=mime,
-        )
-
-
-def _init_session() -> None:
-    if "copilot_chat" not in st.session_state:
-        st.session_state["copilot_chat"] = [
-            {
-                "role": "copilot",
-                "content": (
-                    "Upload or record a hum/beatbox idea and I will convert it into"
-                    " melody and drum MIDI plus a DAW recipe card."
-                ),
-            }
-        ]
-    if "active_project" not in st.session_state:
-        st.session_state["active_project"] = ""
-
-
-def _add_chat(role: str, content: str) -> None:
-    st.session_state["copilot_chat"].append({"role": role, "content": content})
-
-
-def _project_assets(project_dir: Path) -> dict[str, Path]:
-    analysis = project_dir / "analysis.json"
-    payload = _safe_json(analysis)
-
-    midi_map = payload.get("midi_outputs", {}) if isinstance(payload, dict) else {}
-    melody = Path(str(midi_map.get("melody", project_dir / "midi" / "melody.mid")))
-    drums = Path(str(midi_map.get("drums", project_dir / "midi" / "drums.mid")))
-    combined = Path(str(midi_map.get("combined", project_dir / "midi" / "combined.mid")))
-
-    recipe = Path(str(payload.get("recipe_path", project_dir / "recipe.md")))
-    raw_audio = Path(str(payload.get("input_audio", project_dir / "audio" / "raw.wav")))
-    cleaned_audio = Path(str(payload.get("cleaned_audio", project_dir / "audio" / "cleaned.wav")))
-
-    return {
-        "analysis": analysis,
-        "recipe": recipe,
-        "melody": melody,
-        "drums": drums,
-        "combined": combined,
-        "raw_audio": raw_audio,
-        "cleaned_audio": cleaned_audio,
-    }
-
-
 def _list_projects(base_dir: Path) -> list[Path]:
     if not base_dir.exists():
         return []
     return sorted([p for p in base_dir.iterdir() if p.is_dir()], reverse=True)
 
 
-def _assistant_from_project(project_dir: Path, focus: str) -> str:
-    payload = _safe_json(project_dir / "analysis.json")
-    tempo = payload.get("tempo_bpm", "?")
-    key = payload.get("detected_key", "?")
-    genres = payload.get("genre_tags", [])
-    genre_txt = ", ".join(genres) if genres else "open"
+def _inject_theme() -> None:
+    st.markdown(
+        """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap');
 
-    if focus == "arrangement":
-        return (
-            f"Use {tempo} BPM and {key} to structure 8+16+8+16 bars. "
-            "Start minimal, then add bass layer in section two and percussion fills in section four."
-        )
-    if focus == "sound":
-        return (
-            f"For {genre_txt} direction: pair your melody MIDI with one warm lead and one noisy texture. "
-            "Keep drums dry first, then add room reverb only to snare/clap."
-        )
-    return (
-        f"Next move: open melody and drum MIDI from this project, lock DAW to {tempo} BPM, "
-        "then A/B two instrument stacks before writing new notes."
+:root {
+  --bg: #0a0e14;
+  --panel: #111826;
+  --panel-2: #151f30;
+  --border: #2a3648;
+  --text: #f5f8ff;
+  --muted: #b7c4d8;
+  --accent: #4ec5ff;
+  --accent-2: #55e4a6;
+}
+
+html, body, [class*="css"] {
+  font-family: 'Space Grotesk', sans-serif;
+  color: var(--text) !important;
+}
+
+[data-testid="stAppViewContainer"] {
+  background: radial-gradient(circle at 20% 0%, #162235 0%, var(--bg) 45%);
+}
+
+[data-testid="stHeader"] {
+  background: transparent;
+}
+
+[data-testid="stSidebar"] {
+  background: linear-gradient(180deg, #101826 0%, #0c121d 100%);
+  border-right: 1px solid var(--border);
+}
+
+.stMarkdown, .stText, .stCaption, label, p, li, h1, h2, h3, h4 {
+  color: var(--text) !important;
+}
+
+[data-testid="stChatMessage"] {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+[data-testid="stChatMessage"] [data-testid="stMarkdownContainer"] p {
+  color: var(--text) !important;
+}
+
+.v2m-badge {
+  display: inline-block;
+  background: #16314a;
+  border: 1px solid #2e4f70;
+  border-radius: 999px;
+  color: #bde8ff;
+  padding: 4px 10px;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.v2m-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.v2m-small {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stTextInput > div > div > input,
+.stTextArea textarea {
+  background: var(--panel-2) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.stSelectbox div[data-baseweb="select"] > div,
+.stMultiSelect div[data-baseweb="select"] > div {
+  background: var(--panel-2) !important;
+  border: 1px solid var(--border) !important;
+}
+
+.stButton > button,
+.stDownloadButton > button {
+  background: #18263a !important;
+  color: var(--text) !important;
+  border: 1px solid #314763 !important;
+  border-radius: 10px !important;
+}
+
+.stButton > button:hover,
+.stDownloadButton > button:hover {
+  border-color: var(--accent) !important;
+  color: #ffffff !important;
+}
+
+.st-emotion-cache-16txtl3 h1,
+.st-emotion-cache-16txtl3 h2,
+.st-emotion-cache-16txtl3 h3,
+.st-emotion-cache-16txtl3 p {
+  color: var(--text);
+}
+
+hr {
+  border-color: var(--border);
+}
+</style>
+        """,
+        unsafe_allow_html=True,
     )
 
 
-def _render_chat_panel() -> None:
-    st.subheader("Studio Copilot")
-    for msg in st.session_state["copilot_chat"][-10:]:
-        role = "copilot" if msg["role"] == "copilot" else "user"
-        title = "V2M Copilot" if role == "copilot" else "You"
-        st.markdown(
-            (
-                f"<div class='v2m-chat {role}'><strong>{title}</strong><br/>"
-                f"{msg['content']}</div>"
-            ),
-            unsafe_allow_html=True,
+def _init_state() -> None:
+    if "messages" not in st.session_state:
+        st.session_state["messages"] = [
+            {
+                "role": "assistant",
+                "content": (
+                    "I am your V2M Producer Copilot. Record or upload your idea from the sidebar, "
+                    "and I will turn it into melody and drum MIDI plus a DAW-ready recipe."
+                ),
+                "kind": "text",
+            }
+        ]
+    if "active_project" not in st.session_state:
+        st.session_state["active_project"] = ""
+    if "projects_dir" not in st.session_state:
+        st.session_state["projects_dir"] = str(DEFAULT_PROJECTS_DIR)
+
+
+def _push_message(role: str, content: str, kind: str = "text", meta: dict | None = None) -> None:
+    message: dict[str, str] = {"role": role, "content": content, "kind": kind}
+    if meta:
+        for key, value in meta.items():
+            message[key] = str(value)
+    st.session_state["messages"].append(message)
+
+
+def _project_assets(project_dir: Path) -> dict[str, Path]:
+    analysis = project_dir / "analysis.json"
+    payload = _safe_json(analysis)
+    midi = payload.get("midi_outputs", {}) if isinstance(payload, dict) else {}
+
+    return {
+        "analysis": analysis,
+        "recipe": Path(str(payload.get("recipe_path", project_dir / "recipe.md"))),
+        "melody": Path(str(midi.get("melody", project_dir / "midi" / "melody.mid"))),
+        "drums": Path(str(midi.get("drums", project_dir / "midi" / "drums.mid"))),
+        "combined": Path(str(midi.get("combined", project_dir / "midi" / "combined.mid"))),
+        "raw_audio": Path(str(payload.get("input_audio", project_dir / "audio" / "raw.wav"))),
+        "cleaned_audio": Path(str(payload.get("cleaned_audio", project_dir / "audio" / "cleaned.wav"))),
+    }
+
+
+def _download_button(path: Path, label: str, key: str, mime: str = "application/octet-stream") -> None:
+    if path.exists():
+        st.download_button(
+            label=label,
+            data=path.read_bytes(),
+            file_name=path.name,
+            mime=mime,
+            key=key,
         )
 
-    prompt = st.text_input("Ask for guidance", placeholder="How should I layer this groove?")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        if st.button("Next Move"):
-            active = Path(st.session_state.get("active_project") or "")
-            if active.exists():
-                _add_chat("copilot", _assistant_from_project(active, "next"))
-            else:
-                _add_chat("copilot", "Analyze audio first, then I can guide arrangement and sound design.")
-            st.rerun()
-    with c2:
-        if st.button("Arrange"):
-            active = Path(st.session_state.get("active_project") or "")
-            if active.exists():
-                _add_chat("copilot", _assistant_from_project(active, "arrangement"))
-            else:
-                _add_chat("copilot", "Record or upload an idea first so arrangement suggestions fit your material.")
-            st.rerun()
-    with c3:
-        if st.button("Sound Design"):
-            active = Path(st.session_state.get("active_project") or "")
-            if active.exists():
-                _add_chat("copilot", _assistant_from_project(active, "sound"))
-            else:
-                _add_chat("copilot", "Analyze one idea first, then I can suggest sound layers tied to your groove.")
-            st.rerun()
 
-    if prompt.strip():
-        _add_chat("user", prompt.strip())
-        active = Path(st.session_state.get("active_project") or "")
-        if "scale" in prompt.lower():
-            reply = "Use auto scale first, then compare against manual root/scale lock to pick stronger emotional color."
-        elif "drum" in prompt.lower():
-            reply = "Duplicate drum MIDI, keep one tight quantized and one humanized at 60-75% for groove depth."
-        elif active.exists():
-            reply = _assistant_from_project(active, "next")
-        else:
-            reply = "Give me one recording first, then I can provide project-specific advice."
-        _add_chat("copilot", reply)
-        st.rerun()
+def _audio_format(path: Path) -> str:
+    suffix = path.suffix.lower()
+    mapping = {
+        ".wav": "audio/wav",
+        ".mp3": "audio/mpeg",
+        ".ogg": "audio/ogg",
+        ".flac": "audio/flac",
+        ".m4a": "audio/mp4",
+    }
+    return mapping.get(suffix, "audio/wav")
 
 
-def _run_analysis(
+def _compose_reply(prompt: str, active_project: Path | None) -> str:
+    lower = prompt.lower()
+    used_extensions: list[str] = []
+    suggestions: list[str] = []
+
+    if any(token in lower for token in ["arrange", "structure", "section", "song form"]):
+        used_extensions.append("Arrangement Planner")
+        suggestions.extend(
+            [
+                "Map your idea into 8-bar blocks: intro, verse, pre, hook.",
+                "Mute drums for the first 4 bars, then re-introduce with hats only.",
+                "Add a contrast section with a half-time drum variant.",
+            ]
+        )
+
+    if any(token in lower for token in ["sound", "synth", "layer", "texture", "mix"]):
+        used_extensions.append("Sound Stack Engine")
+        suggestions.extend(
+            [
+                "Primary layer: mono lead for definition.",
+                "Secondary layer: airy pad with high-pass filter.",
+                "Third layer: transient pluck for rhythmic clarity.",
+            ]
+        )
+
+    if any(token in lower for token in ["chord", "harmony", "progression"]):
+        used_extensions.append("Harmony Guide")
+        suggestions.extend(
+            [
+                "Try two harmonic routes and keep the one that supports your melody contour.",
+                "Route A: i - bVII - bVI - bVI",
+                "Route B: i - VI - III - VII",
+            ]
+        )
+
+    if any(token in lower for token in ["drum", "beat", "groove", "rhythm"]):
+        used_extensions.append("Groove Refiner")
+        suggestions.extend(
+            [
+                "Duplicate your drum MIDI and offset the second hats track by 5-12 ms.",
+                "Lower kick velocity on every second hit to create movement.",
+                "Use 60-80% quantization for a human feel.",
+            ]
+        )
+
+    if not suggestions:
+        used_extensions.append("Producer Copilot")
+        suggestions.extend(
+            [
+                "Start from your analyzed melody and drums, then build one bass line before adding extra layers.",
+                "Commit one 8-bar loop first, then duplicate and mutate the second loop.",
+                "Keep your first pass fast; refine sound design after arrangement is stable.",
+            ]
+        )
+
+    project_hint = ""
+    if active_project and active_project.exists():
+        payload = _safe_json(active_project / "analysis.json")
+        project_hint = (
+            f"\nCurrent project context: {payload.get('tempo_bpm', '?')} BPM, "
+            f"{payload.get('detected_key', '?')} key, "
+            f"{payload.get('melody_event_count', 0)} melody events, "
+            f"{payload.get('drum_event_count', 0)} drum events."
+        )
+    else:
+        project_hint = "\nNo active analysis yet. Record or upload one idea in the sidebar first."
+
+    body = "\n".join(f"- {item}" for item in suggestions[:5])
+    extension_line = ", ".join(dict.fromkeys(used_extensions))
+    return (
+        f"Extensions used: `{extension_line}`{project_hint}\n\n"
+        f"Recommended next steps:\n{body}"
+    )
+
+
+def _run_audio_analysis(
     *,
     source_bytes: bytes,
     source_name: str,
@@ -251,14 +315,14 @@ def _run_analysis(
     manual_key: str,
     genre_tags: list[str],
     quantize_strength: float,
-) -> Path:
+) -> PrototypeProjectResult:
     UI_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     suffix = Path(source_name).suffix or ".wav"
     upload_name = f"{_timestamp()}-{_slugify(Path(source_name).stem)}{suffix}"
     upload_path = UI_UPLOAD_DIR / upload_name
     upload_path.write_bytes(source_bytes)
 
-    result = analyze_audio_to_project(
+    return analyze_audio_to_project(
         input_audio_path=upload_path,
         projects_dir=projects_dir,
         project_name=project_name,
@@ -267,287 +331,224 @@ def _run_analysis(
         genre_tags=genre_tags,
         quantize_strength=quantize_strength,
     )
-    return result.project_dir
 
 
-def _render_active_project(project_dir: Path) -> None:
+def _run_quick_sketch(style: str, key: str, bpm: int, bars: int, complexity: int) -> Path:
+    idea = generate_idea(style=style, key=key, bpm=bpm, bars=bars, complexity=complexity)
+    UI_OUT_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = UI_OUT_DIR / f"{_timestamp()}-sketch-{_slugify(style)}.mid"
+    export_idea_to_midi(idea, output_path)
+    return output_path
+
+
+def _render_project_bundle(project_dir: Path, key_prefix: str) -> None:
     assets = _project_assets(project_dir)
     payload = _safe_json(assets["analysis"])
 
-    tempo = payload.get("tempo_bpm", "?")
-    key = payload.get("detected_key", "?")
-    melody_count = payload.get("melody_event_count", 0)
-    drum_count = payload.get("drum_event_count", 0)
-
-    st.markdown("### Current Output")
     c1, c2, c3, c4 = st.columns(4)
-    c1.markdown(f"<div class='v2m-metric'><strong>Tempo</strong><br/>{tempo} BPM</div>", unsafe_allow_html=True)
-    c2.markdown(f"<div class='v2m-metric'><strong>Key</strong><br/>{key}</div>", unsafe_allow_html=True)
-    c3.markdown(f"<div class='v2m-metric'><strong>Melody</strong><br/>{melody_count} events</div>", unsafe_allow_html=True)
-    c4.markdown(f"<div class='v2m-metric'><strong>Drums</strong><br/>{drum_count} events</div>", unsafe_allow_html=True)
+    c1.metric("Tempo", f"{payload.get('tempo_bpm', '?')} BPM")
+    c2.metric("Key", str(payload.get("detected_key", "?")))
+    c3.metric("Melody", int(payload.get("melody_event_count", 0)))
+    c4.metric("Drums", int(payload.get("drum_event_count", 0)))
 
-    tab1, tab2, tab3, tab4 = st.tabs(["Files", "Recipe", "Audio", "Analysis"])
-    with tab1:
-        b1, b2, b3 = st.columns(3)
-        with b1:
-            _download_button(assets["melody"], "Melody MIDI", "audio/midi")
-        with b2:
-            _download_button(assets["drums"], "Drums MIDI", "audio/midi")
-        with b3:
-            _download_button(assets["combined"], "Combined MIDI", "audio/midi")
-    with tab2:
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        _download_button(assets["melody"], "Melody MIDI", key=f"{key_prefix}-melody", mime="audio/midi")
+    with d2:
+        _download_button(assets["drums"], "Drums MIDI", key=f"{key_prefix}-drums", mime="audio/midi")
+    with d3:
+        _download_button(assets["combined"], "Combined MIDI", key=f"{key_prefix}-combined", mime="audio/midi")
+
+    with st.expander("Recipe Card", expanded=False):
         st.code(_read_text(assets["recipe"]), language="markdown")
-    with tab3:
+
+    with st.expander("Audio Preview", expanded=False):
         if assets["raw_audio"].exists():
-            st.caption("Raw audio")
-            st.audio(assets["raw_audio"].read_bytes(), format="audio/wav")
+            st.caption("Raw input")
+            st.audio(assets["raw_audio"].read_bytes(), format=_audio_format(assets["raw_audio"]))
         if assets["cleaned_audio"].exists():
-            st.caption("Cleaned audio")
-            st.audio(assets["cleaned_audio"].read_bytes(), format="audio/wav")
-    with tab4:
+            st.caption("Cleaned")
+            st.audio(assets["cleaned_audio"].read_bytes(), format=_audio_format(assets["cleaned_audio"]))
+
+    with st.expander("Analysis JSON", expanded=False):
         st.json(payload)
 
 
-def _render_copilot_workspace() -> None:
-    st.title("V2M Studio Flow")
-    st.markdown(
-        """
-<div class="v2m-card">
-Your main path is simple: capture one musical idea, convert it to MIDI, then iterate with copilot guidance.
-</div>
-        """,
-        unsafe_allow_html=True,
-    )
+def _render_messages() -> None:
+    for idx, msg in enumerate(st.session_state["messages"]):
+        role = msg.get("role", "assistant")
+        with st.chat_message("assistant" if role == "assistant" else "user"):
+            if msg.get("kind") == "project":
+                st.markdown(msg.get("content", ""))
+                project_dir = Path(msg.get("project_dir", ""))
+                if project_dir.exists():
+                    _render_project_bundle(project_dir, key_prefix=f"m{idx}")
+            elif msg.get("kind") == "midi_sketch":
+                st.markdown(msg.get("content", ""))
+                midi_path = Path(msg.get("midi_path", ""))
+                _download_button(midi_path, "Download Sketch MIDI", key=f"m{idx}-sketch", mime="audio/midi")
+            else:
+                st.markdown(msg.get("content", ""))
 
-    left, right = st.columns([1.05, 1.25], gap="large")
-    with left:
-        _render_chat_panel()
 
-    with right:
-        st.subheader("1) Capture and Analyze")
+def _render_sidebar() -> None:
+    with st.sidebar:
+        st.markdown("## V2M Producer Copilot")
+        st.markdown("<div class='v2m-small'>Main action: Audio to DAW package</div>", unsafe_allow_html=True)
+
+        st.markdown("### Analyze Audio")
         recorded = st.audio_input("Record idea")
-        uploaded = st.file_uploader("Or upload audio", type=["wav", "mp3", "flac", "ogg", "m4a"])
+        uploaded = st.file_uploader("or Upload audio", type=["wav", "mp3", "flac", "ogg", "m4a"])
 
-        c1, c2 = st.columns(2)
         default_name = f"idea-{datetime.now().strftime('%H%M')}"
-        project_name = c1.text_input("Project Name", value=default_name)
-        genre_tags_text = c2.text_input("Genre Tags", value="trap,experimental")
+        project_name = st.text_input("Project name", value=default_name)
+        tags_text = st.text_input("Genre tags", value="trap,experimental")
 
-        with st.expander("Advanced Controls"):
-            a1, a2 = st.columns(2)
-            scale_mode = a1.selectbox("Scale Mode", ["auto", "manual"], index=0)
-            manual_key = a2.text_input("Manual Key", value="C major")
-            quantize_strength = a1.slider("Quantize Strength", min_value=0.0, max_value=1.0, value=0.9)
-            projects_dir = a2.text_input("Projects Directory", value=str(DEFAULT_PROJECTS_DIR))
+        with st.expander("Advanced analysis settings", expanded=False):
+            scale_mode = st.selectbox("Scale mode", ["auto", "manual"], index=0)
+            manual_key = st.text_input("Manual key", value="C major")
+            quantize_strength = st.slider("Quantize strength", min_value=0.0, max_value=1.0, value=0.9)
+            st.session_state["projects_dir"] = st.text_input(
+                "Projects directory",
+                value=st.session_state.get("projects_dir", str(DEFAULT_PROJECTS_DIR)),
+            )
             st.caption("Supported scales: " + ", ".join(list_supported_keys()))
 
         source = recorded if recorded is not None else uploaded
-        if st.button("Analyze Idea and Build Project", type="primary", use_container_width=True):
+        if st.button("Analyze and Create Project", use_container_width=True, type="primary"):
             if source is None:
-                st.error("Record or upload audio first.")
-            else:
-                tags = [tag.strip() for tag in genre_tags_text.split(",") if tag.strip()]
-                _add_chat("user", "Convert this idea into a full music pack.")
-                try:
-                    with st.spinner("Analyzing audio, creating MIDI, and generating recipe card..."):
-                        project_dir = _run_analysis(
-                            source_bytes=source.getvalue(),
-                            source_name=source.name,
-                            project_name=project_name,
-                            projects_dir=projects_dir,
-                            scale_mode=scale_mode,
-                            manual_key=manual_key,
-                            genre_tags=tags,
-                            quantize_strength=quantize_strength,
-                        )
-                except Exception as exc:  # noqa: BLE001
-                    st.error(f"Analysis failed: {exc}")
-                    _add_chat("copilot", f"I could not process that audio yet: {exc}")
-                else:
-                    st.session_state["active_project"] = str(project_dir)
-                    payload = _safe_json(project_dir / "analysis.json")
-                    _add_chat(
-                        "copilot",
-                        (
-                            f"Done. I detected {payload.get('tempo_bpm', '?')} BPM and "
-                            f"{payload.get('detected_key', 'unknown key')}. "
-                            "Use the Files tab to drop MIDI into your DAW now."
-                        ),
+                _push_message("assistant", "Please record or upload audio first.")
+                st.rerun()
+
+            _push_message("user", "Convert this idea into a production-ready toolkit.")
+            tags = [tag.strip() for tag in tags_text.split(",") if tag.strip()]
+            try:
+                with st.spinner("Analyzing and generating files..."):
+                    result = _run_audio_analysis(
+                        source_bytes=source.getvalue(),
+                        source_name=source.name,
+                        project_name=project_name,
+                        projects_dir=st.session_state["projects_dir"],
+                        scale_mode=scale_mode,
+                        manual_key=manual_key,
+                        genre_tags=tags,
+                        quantize_strength=quantize_strength,
                     )
-                    st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                _push_message("assistant", f"Analysis failed: {exc}")
+            else:
+                st.session_state["active_project"] = str(result.project_dir)
+                summary = (
+                    "Analysis complete. Extensions used: `Audio Cleanup`, `Groove Translator`, `Recipe Builder`."
+                    f"\n\nProject: `{result.project_dir}`"
+                    f"\nDetected: `{result.tempo_bpm} BPM`, `{result.detected_key}`"
+                )
+                _push_message(
+                    "assistant",
+                    summary,
+                    kind="project",
+                    meta={"project_dir": str(result.project_dir)},
+                )
+            st.rerun()
 
-        active = Path(st.session_state.get("active_project") or "")
-        if active.exists():
-            _render_active_project(active)
+        st.markdown("---")
+        st.markdown("### Load Existing Project")
+        projects = _list_projects(Path(st.session_state.get("projects_dir", str(DEFAULT_PROJECTS_DIR))))
+        if projects:
+            selected = st.selectbox("Project", [p.name for p in projects], key="project_selector")
+            if st.button("Load Project", use_container_width=True):
+                project_dir = next((p for p in projects if p.name == selected), projects[0])
+                st.session_state["active_project"] = str(project_dir)
+                _push_message(
+                    "assistant",
+                    f"Loaded project `{project_dir.name}`. Ask me for arrangement, harmony, or sound-layer help.",
+                    kind="project",
+                    meta={"project_dir": str(project_dir)},
+                )
+                st.rerun()
+        else:
+            st.caption("No projects found yet.")
 
-
-def _producer_assistant_response(
-    *,
-    idea_description: str,
-    genre_tags: list[str],
-    mood: str,
-    energy: int,
-) -> str:
-    genres = {tag.lower() for tag in genre_tags}
-    progression = "I - V - vi - IV"
-    if "trap" in genres:
-        progression = "i - bVII - bVI - bVI"
-    elif "lofi" in genres:
-        progression = "ii - V - I - vi"
-    elif "edm" in genres:
-        progression = "I - V - vi - IV (8-bar lift)"
-
-    drum_advice = "Use punchy kick + clap backbeat + syncopated hat variations."
-    if energy <= 3:
-        drum_advice = "Keep sparse drums with soft hats and ghost snare notes."
-    elif energy >= 8:
-        drum_advice = "Push transients harder with layered kick/snare and fast hat rolls."
-
-    mood_layer = {
-        "dark": "detuned pad + low-pass texture + sub drone",
-        "uplifting": "bright pluck + wide supersaw stack + octave lead doubles",
-        "melancholic": "warm piano + tape pad + low cello-like bass",
-        "aggressive": "distorted bass layer + transient shaper + clipped drums",
-        "dreamy": "chorused keys + shimmer reverb + airy vocal-like synth",
-    }.get(mood.lower(), "primary lead + support pad + bass foundation")
-
-    return textwrap.dedent(
-        f"""
-        **Producer Assistant Plan**
-
-        Idea summary:
-        - `{idea_description or "No text prompt provided"}`
-        - Mood: `{mood}`
-        - Energy: `{energy}/10`
-        - Genres: `{", ".join(genre_tags) if genre_tags else "open experimentation"}`
-
-        Suggested harmony route:
-        - `{progression}`
-
-        Layering route:
-        - `{mood_layer}`
-        - Add countermelody in final 4 bars of each phrase.
-        - Duplicate melody one octave down for bass guide notes.
-
-        Drum route:
-        - {drum_advice}
-        - Keep 60-80% quantize if groove feels too robotic.
-
-        Arrangement route:
-        - 8 bars intro (filtered melody only)
-        - 16 bars main section (full drums + bass)
-        - 8 bars variation (remove kick, keep hats/perc)
-        - 16 bars payoff (full stack + fills)
-        """
-    ).strip()
+        st.markdown("---")
+        st.markdown("### Quick Sketch Extension")
+        style = st.selectbox("Style", sorted(STYLE_PRESETS.keys()), index=0)
+        sketch_key = st.text_input("Sketch key", value="C major")
+        bpm = st.slider("Sketch BPM", min_value=50, max_value=220, value=120)
+        bars = st.slider("Sketch bars", min_value=1, max_value=16, value=8)
+        complexity = st.slider("Sketch complexity", min_value=1, max_value=10, value=6)
+        if st.button("Generate Sketch MIDI", use_container_width=True):
+            try:
+                midi_path = _run_quick_sketch(style=style, key=sketch_key, bpm=bpm, bars=bars, complexity=complexity)
+            except Exception as exc:  # noqa: BLE001
+                _push_message("assistant", f"Could not generate sketch: {exc}")
+            else:
+                _push_message(
+                    "assistant",
+                    (
+                        "Sketch generated. Extensions used: `Idea Generator`. "
+                        "Use this as a starting point if you do not have a recording yet."
+                    ),
+                    kind="midi_sketch",
+                    meta={"midi_path": str(midi_path)},
+                )
+            st.rerun()
 
 
-def _render_generate_extension() -> None:
-    st.subheader("Extension: Fast MIDI Generator")
-    with st.form("generate_form"):
-        c1, c2 = st.columns(2)
-        style = c1.selectbox("Style", sorted(STYLE_PRESETS.keys()), index=0)
-        key = c2.text_input("Key", value="C major")
-        bpm = c1.slider("BPM", min_value=50, max_value=220, value=120)
-        bars = c2.slider("Bars", min_value=1, max_value=32, value=8)
-        complexity = c1.slider("Complexity", min_value=1, max_value=10, value=6)
-        seed_text = c2.text_input("Seed (optional)", value="")
-        output_label = c2.text_input("Output Name", value="idea")
-        submitted = st.form_submit_button("Generate")
-
-    if not submitted:
-        return
-
-    seed = int(seed_text) if seed_text.strip() else None
-    try:
-        idea = generate_idea(
-            style=style,
-            key=key,
-            bpm=bpm,
-            bars=bars,
-            complexity=complexity,
-            seed=seed,
-        )
-    except ValueError as exc:
-        st.error(str(exc))
-        return
-
-    UI_OUT_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = UI_OUT_DIR / f"{_timestamp()}-{_slugify(output_label)}.mid"
-    export_idea_to_midi(idea, output_path)
-    st.success(f"Generated: {output_path}")
-    _download_button(output_path, "Download MIDI", "audio/midi")
-
-
-def _render_assistant_extension() -> None:
-    st.subheader("Extension: Producer Brainstorm")
-    idea_description = st.text_area(
-        "Describe your idea",
-        value="hummed dark bassline with punchy beatbox groove",
-        height=90,
-    )
+def _handle_quick_actions() -> None:
     c1, c2, c3 = st.columns(3)
-    mood = c1.selectbox("Mood", ["dark", "uplifting", "melancholic", "aggressive", "dreamy"])
-    energy = c2.slider("Energy", min_value=1, max_value=10, value=7)
-    tag_text = c3.text_input("Genre tags", value="trap,experimental")
-    tags = [tag.strip() for tag in tag_text.split(",") if tag.strip()]
-
-    if st.button("Generate Plan"):
-        st.markdown(
-            _producer_assistant_response(
-                idea_description=idea_description,
-                genre_tags=tags,
-                mood=mood,
-                energy=energy,
-            )
-        )
-
-
-def _render_extensions() -> None:
-    st.title("Extensions")
-    st.caption("Secondary tools that support the core audio-to-MIDI flow.")
-    tab1, tab2 = st.tabs(["Fast Generator", "Producer Brainstorm"])
-    with tab1:
-        _render_generate_extension()
-    with tab2:
-        _render_assistant_extension()
-
-
-def _render_project_explorer() -> None:
-    st.title("Project Explorer")
-    base = Path(st.text_input("Projects Directory", value=str(DEFAULT_PROJECTS_DIR)))
-    projects = _list_projects(base)
-    if not projects:
-        st.info("No projects found yet.")
-        return
-
-    selected_name = st.selectbox("Select Project", [p.name for p in projects])
-    selected = next((p for p in projects if p.name == selected_name), projects[0])
-    st.write(f"Path: `{selected}`")
-
-    st.session_state["active_project"] = str(selected)
-    _render_active_project(selected)
+    with c1:
+        if st.button("Suggest Arrangement", use_container_width=True):
+            prompt = "Give me an arrangement plan for this idea"
+            _push_message("user", prompt)
+            active = Path(st.session_state.get("active_project", ""))
+            _push_message("assistant", _compose_reply(prompt, active if active.exists() else None))
+            st.rerun()
+    with c2:
+        if st.button("Suggest Sound Stack", use_container_width=True):
+            prompt = "How should I layer sounds and textures for this track"
+            _push_message("user", prompt)
+            active = Path(st.session_state.get("active_project", ""))
+            _push_message("assistant", _compose_reply(prompt, active if active.exists() else None))
+            st.rerun()
+    with c3:
+        if st.button("Improve Groove", use_container_width=True):
+            prompt = "How can I improve drum groove and rhythm feel"
+            _push_message("user", prompt)
+            active = Path(st.session_state.get("active_project", ""))
+            _push_message("assistant", _compose_reply(prompt, active if active.exists() else None))
+            st.rerun()
 
 
 def main() -> None:
-    st.set_page_config(page_title="V2M Studio", layout="wide")
-    _styled_header()
-    _init_session()
+    st.set_page_config(page_title="V2M Producer Copilot", layout="wide")
+    _inject_theme()
+    _init_state()
+    _render_sidebar()
 
-    with st.sidebar:
-        st.title("V2M")
-        section = st.radio(
-            "Navigate",
-            options=["Studio Copilot", "Extensions", "Project Explorer"],
-            index=0,
+    st.markdown("# V2M Producer Copilot")
+    st.markdown(
+        "<div class='v2m-card'>"
+        "Main workflow: analyze your hum/beatbox idea, then iterate with chat guidance and built-in producer extensions."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    active_project = Path(st.session_state.get("active_project", ""))
+    if active_project.exists():
+        st.markdown(
+            f"<div class='v2m-badge'>Active Project: {active_project.name}</div>",
+            unsafe_allow_html=True,
         )
 
-    if section == "Studio Copilot":
-        _render_copilot_workspace()
-    elif section == "Extensions":
-        _render_extensions()
-    elif section == "Project Explorer":
-        _render_project_explorer()
+    _handle_quick_actions()
+    _render_messages()
+
+    prompt = st.chat_input("Ask your producer copilot anything about arrangement, harmony, groove, and sound design...")
+    if prompt:
+        _push_message("user", prompt)
+        active = Path(st.session_state.get("active_project", ""))
+        _push_message("assistant", _compose_reply(prompt, active if active.exists() else None))
+        st.rerun()
 
 
 if __name__ == "__main__":
