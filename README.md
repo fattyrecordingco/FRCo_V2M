@@ -42,6 +42,7 @@ AI-assisted music creation software built as a local-first experiment, then rele
 python -m pip install -e .[dev]
 python -m v2m.cli generate --style pop --key "C major" --bpm 120 --bars 8 --complexity 5 --seed 42 --output out/idea.mid
 python -m v2m.cli analyze --input .\path\to\idea.wav --scale-mode auto --genre-tags "trap,lofi"
+python -m streamlit run src/v2m/ui_app.py
 pytest
 ```
 
@@ -51,6 +52,12 @@ Generated MIDI files can be dragged into Ableton/FL Studio for manual validation
 - `melody.mid`, `drums.mid`, `combined.mid`
 - `analysis.json`
 - `recipe.md`
+
+UI features:
+- `Home`: workflow overview
+- `Generate MIDI Idea`: prompt-style MIDI ideation
+- `Analyze Audio`: upload hum/beatbox audio and build full project outputs
+- `Project Explorer`: reopen and download prior project artifacts
 
 ## Available Styles
 - `pop`
