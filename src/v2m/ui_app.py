@@ -6,6 +6,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import re
+import textwrap
 
 import streamlit as st
 
@@ -101,6 +102,67 @@ Use the sidebar to move between generation, audio analysis, and project browsing
     )
 
 
+def _producer_assistant_response(
+    *,
+    idea_description: str,
+    genre_tags: list[str],
+    mood: str,
+    energy: int,
+) -> str:
+    genres = {tag.lower() for tag in genre_tags}
+    progression = "I - V - vi - IV"
+    if "trap" in genres:
+        progression = "i - bVII - bVI - bVI"
+    elif "lofi" in genres:
+        progression = "ii - V - I - vi"
+    elif "edm" in genres:
+        progression = "I - V - vi - IV (with 8-bar riser)"
+
+    drum_advice = "Use punchy kick + clap backbeat + syncopated hat variations."
+    if energy <= 3:
+        drum_advice = "Keep sparse drums with soft hats and ghost snare notes."
+    elif energy >= 8:
+        drum_advice = "Push transients harder with layered kick/snare and fast hat rolls."
+
+    mood_layer = {
+        "dark": "detuned pad + low-pass texture + sub drone",
+        "uplifting": "bright pluck + wide supersaw stack + octave lead doubles",
+        "melancholic": "warm piano + tape pad + low cello-like bass",
+        "aggressive": "distorted bass layer + transient shaper + clipped drums",
+        "dreamy": "chorused keys + shimmer reverb + airy vocal-like synth",
+    }.get(mood.lower(), "primary lead + support pad + bass foundation")
+
+    return textwrap.dedent(
+        f"""
+        **Producer Assistant Plan**
+
+        Idea summary:
+        - `{idea_description or "No text prompt provided"}`
+        - Mood: `{mood}`
+        - Energy: `{energy}/10`
+        - Genres: `{", ".join(genre_tags) if genre_tags else "open experimentation"}`
+
+        Suggested harmony route:
+        - `{progression}`
+
+        Layering route:
+        - `{mood_layer}`
+        - Add countermelody in final 4 bars of each phrase.
+        - Duplicate melody one octave down for bass guide notes.
+
+        Drum route:
+        - {drum_advice}
+        - Keep 60-80% quantize if groove feels too robotic.
+
+        Arrangement route:
+        - 8 bars intro (filtered melody only)
+        - 16 bars main idea (full drums + bass)
+        - 8 bars variation (remove kick, keep hat/perc movement)
+        - 16 bars payoff (full stack + adlibs/fills)
+        """
+    ).strip()
+
+
 def _render_generate() -> None:
     st.header("Generate MIDI Idea")
     with st.form("generate_form"):
@@ -172,7 +234,8 @@ def _render_result(result: PrototypeProjectResult) -> None:
 
 def _render_analyze() -> None:
     st.header("Analyze Humming / Beatbox Audio")
-    uploaded = st.file_uploader("Upload audio", type=["wav", "mp3", "flac", "ogg", "m4a"])
+    recorded = st.audio_input("Record from microphone")
+    uploaded = st.file_uploader("Or upload audio", type=["wav", "mp3", "flac", "ogg", "m4a"])
     c1, c2 = st.columns(2)
     project_name = c1.text_input("Project Name", value="session")
     projects_dir = c2.text_input("Projects Directory", value=str(DEFAULT_PROJECTS_DIR))
@@ -185,14 +248,16 @@ def _render_analyze() -> None:
         st.write(", ".join(list_supported_keys()))
 
     if st.button("Analyze and Build Project", type="primary"):
-        if uploaded is None:
-            st.error("Upload an audio file first.")
+        source_file = recorded if recorded is not None else uploaded
+        if source_file is None:
+            st.error("Record from mic or upload an audio file first.")
             return
 
         UI_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-        upload_name = f"{_timestamp()}-{_slugify(uploaded.name)}"
+        suffix = Path(source_file.name).suffix or ".wav"
+        upload_name = f"{_timestamp()}-{_slugify(Path(source_file.name).stem)}{suffix}"
         upload_path = UI_UPLOAD_DIR / upload_name
-        upload_path.write_bytes(uploaded.getvalue())
+        upload_path.write_bytes(source_file.getvalue())
 
         genre_tags = [tag.strip() for tag in genre_tags_text.split(",") if tag.strip()]
         try:
@@ -211,6 +276,32 @@ def _render_analyze() -> None:
             return
 
         _render_result(result)
+
+
+def _render_assistant() -> None:
+    st.header("Producer Assistant")
+    st.caption("Text-guided exploration to extend your hum/beatbox idea into full production routes.")
+
+    idea_description = st.text_area(
+        "Describe your idea",
+        value="hummed dark bassline with punchy beatbox groove",
+        height=100,
+    )
+    c1, c2, c3 = st.columns(3)
+    mood = c1.selectbox("Mood", ["dark", "uplifting", "melancholic", "aggressive", "dreamy"])
+    energy = c2.slider("Energy", min_value=1, max_value=10, value=7)
+    tag_text = c3.text_input("Genre tags", value="trap,experimental")
+    tags = [tag.strip() for tag in tag_text.split(",") if tag.strip()]
+
+    if st.button("Generate Assistant Plan"):
+        st.markdown(
+            _producer_assistant_response(
+                idea_description=idea_description,
+                genre_tags=tags,
+                mood=mood,
+                energy=energy,
+            )
+        )
 
 
 def _list_projects(base_dir: Path) -> list[Path]:
@@ -260,7 +351,13 @@ def main() -> None:
         st.title("V2M")
         section = st.radio(
             "Navigate",
-            options=["Home", "Generate MIDI Idea", "Analyze Audio", "Project Explorer"],
+            options=[
+                "Home",
+                "Generate MIDI Idea",
+                "Analyze Audio",
+                "Producer Assistant",
+                "Project Explorer",
+            ],
             index=0,
         )
 
@@ -270,6 +367,8 @@ def main() -> None:
         _render_generate()
     elif section == "Analyze Audio":
         _render_analyze()
+    elif section == "Producer Assistant":
+        _render_assistant()
     elif section == "Project Explorer":
         _render_project_explorer()
 
