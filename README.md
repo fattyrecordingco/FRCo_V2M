@@ -6,17 +6,19 @@ AI-assisted music creation software built as a local-first experiment, then rele
 - `v0.1.0.dev0` local MVP scaffold is active.
 - Includes a CLI generator with style/key/bpm controls.
 - Exports MIDI ideas for DAW import and testing.
+- GitHub remote and `v0.1.0-dev` tag are published.
 
 ## Mission
 - Improve music-making workflows for artists using practical AI tools.
 - Learn software engineering fundamentals through real product delivery.
 - Build toward DAW integration and virtual plugin development over time.
 
-## Scope (Phase 1)
+## Scope (Current + Next)
 - Local app workflow for generating musical ideas.
 - AI-assisted MIDI suggestions (currently heuristic seed engine for MVP).
 - MIDI export for DAW workflows (Ableton, FL Studio, others).
 - Preset-driven controls for style, key, tempo, and complexity.
+- Upcoming: hum/beatbox audio-to-MIDI and DAW recipe card guidance.
 
 ## Non-Goals (Phase 1)
 - Full plugin (VST/AU/AAX) support.
@@ -50,6 +52,12 @@ Generated MIDI files can be dragged into Ableton/FL Studio for manual validation
 - `lofi`
 - `edm`
 - `cinematic`
+
+## Planning Docs
+- Product requirements: `docs/PRODUCT_REQUIREMENTS.md`
+- Architecture blueprint: `docs/SYSTEM_ARCHITECTURE.md`
+- Milestones and execution plan: `docs/PROJECT_PLAN.md`
+- Release phases: `docs/ROADMAP.md`
 
 ## Separation Requirement
 This project is independent from BECA Project and `BECAFirmware`.
