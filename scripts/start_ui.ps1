@@ -1,13 +1,23 @@
-$ErrorActionPreference = "Stop"
-$projectRoot = Split-Path -Parent $PSScriptRoot
-Set-Location $projectRoot
+param(
+  [string]$PythonExe = "python",
+  [string]$NodeExe = "npm"
+)
 
-if (-not (Test-Path ".venv")) {
-    Write-Host "Missing .venv. Run .\\scripts\\setup_first_time.ps1 first."
-    exit 1
+$ErrorActionPreference = "Stop"
+
+$backend = Start-Process -PassThru -NoNewWindow powershell -ArgumentList @(
+  "-NoProfile",
+  "-Command",
+  "Set-Location '$PSScriptRoot\\..\\backend'; $PythonExe -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
+)
+
+try {
+  Set-Location "$PSScriptRoot\..\frontend"
+  & $NodeExe run dev
+}
+finally {
+  if ($backend -and -not $backend.HasExited) {
+    Stop-Process -Id $backend.Id -Force
+  }
 }
 
-. .\.venv\Scripts\Activate.ps1
-$env:STREAMLIT_SUPPRESS_EMAIL_PROMPT = "true"
-$env:STREAMLIT_BROWSER_GATHER_USAGE_STATS = "false"
-python -m streamlit run src/v2m/ui_app.py --server.headless true --server.port 8501 --browser.gatherUsageStats false

@@ -1,22 +1,20 @@
 param(
-    [switch]$RunTests = $true
+  [string]$PythonExe = "python",
+  [string]$NodeExe = "npm"
 )
 
 $ErrorActionPreference = "Stop"
-$projectRoot = Split-Path -Parent $PSScriptRoot
-Set-Location $projectRoot
 
-if (-not (Test-Path ".venv")) {
-    python -m venv .venv
-}
+Write-Host "Installing backend dependencies..."
+Push-Location backend
+& $PythonExe -m pip install --upgrade pip
+& $PythonExe -m pip install -e ".[dev]"
+Pop-Location
 
-. .\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -e .[dev]
-
-if ($RunTests) {
-    pytest
-}
+Write-Host "Installing frontend dependencies..."
+Push-Location frontend
+& $NodeExe install
+Pop-Location
 
 Write-Host "Setup complete."
-Write-Host "Run the app with: .\\scripts\\start_ui.ps1"
+

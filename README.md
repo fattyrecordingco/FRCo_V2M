@@ -1,90 +1,87 @@
-# V2M Software
+# VINS (Voice Input Notation System)
 
-AI-assisted music creation software built as a local-first experiment, then released publicly on GitHub.
+VINS is a local-first audio-to-MIDI desktop/web application designed for rapid idea capture from voice, instruments, and beatboxing.
 
-## Current Status
-- `v0.1.0.dev0` local MVP scaffold is active.
-- Includes a CLI generator with style/key/bpm controls.
-- Exports MIDI ideas for DAW import and testing.
-- GitHub remote and `v0.1.0-dev` tag are published.
+## Stack
 
-## Mission
-- Improve music-making workflows for artists using practical AI tools.
-- Learn software engineering fundamentals through real product delivery.
-- Build toward DAW integration and virtual plugin development over time.
+- `frontend/`: React + TypeScript + Vite + Tailwind UI (browser-first)
+- `backend/`: FastAPI + Python offline analysis engine (pitch/chords/drums + MIDI/audio export)
+- `frontend/src-tauri/`: Tauri desktop shell for Windows/macOS packaging
+- `plugin/`: JUCE VST3/AU scaffold for DAW integration roadmap
 
-## Scope (Current + Next)
-- Local app workflow for generating musical ideas.
-- AI-assisted MIDI suggestions (currently heuristic seed engine for MVP).
-- MIDI export for DAW workflows (Ableton, FL Studio, others).
-- Preset-driven controls for style, key, tempo, and complexity.
-- Upcoming: hum/beatbox audio-to-MIDI and DAW recipe card guidance.
+## Features Implemented
 
-## Non-Goals (Phase 1)
-- Full plugin (VST/AU/AAX) support.
-- Cloud accounts, payments, or marketplace features.
-- Advanced mixing/mastering automation.
+- 4-step wizard UI in one view:
+  1. Input (mic recording device selection, upload, drag/drop, waveform + playback)
+  2. Pre-processing (mode select, auto pitch/time, manual root/scale/BPM/signature, custom scale piano)
+  3. Processing & preview (loading state, note visualization, instrument audition, play/pause, loop, solo/mute, file panel)
+  4. Output management (MIDI/audio panels, download buttons, session ZIP export)
+- Offline analysis pipeline:
+  - Monophonic note extraction
+  - Polyphonic chord recognition
+  - Drum onset + spectral class transcription
+  - Mono/poly auto-detection with override
+  - Quantization and optional retime/retune
+- Session archive persisted in `projects/`
+- Regeneration creates new run folders per session
+- Rename updates files on disk (replaces existing target file if same name exists)
+- API endpoints:
+  - `POST /api/v1/analyze`
+  - `POST /api/v1/convert-notes`
+  - `POST /api/v1/convert-chords`
+  - `POST /api/v1/convert-drums`
+  - Session/file/zip endpoints for archive management
 
-## Project Structure
-- `docs/` planning, architecture, roadmap, release process.
-- `src/` application source code.
-- `tests/` automated tests.
-- `scripts/` helper scripts for development and release tasks.
+## Repository Layout
 
-## Milestones
-- `M0` Foundation: repo setup, planning docs, baseline tooling.
-- `M1` Core MVP: idea generation + MIDI export + local testing.
-- `M2` First Public Release: GitHub repo + tagged `v0.1.0`.
-- `M3` Plugin Track: DAW plugin prototype exploration.
+```text
+backend/     Python FastAPI engine
+frontend/    React app + Tauri shell
+plugin/      JUCE plugin scaffold
+docs/        architecture, API, roadmap, plugin integration docs
+tests/       backend unit tests
+examples/    sample audio for demo and testing
+src/shared/  shared engine contracts and planning assets
+scripts/     setup/run helper scripts
+```
 
 ## Quick Start
-```powershell
-.\scripts\setup_first_time.ps1
-$env:OPENAI_API_KEY="your_openai_api_key"
-.\scripts\start_ui.ps1
+
+1. Install Python 3.11+, Node.js 20+, and Rust toolchain (for Tauri builds).
+2. Run setup:
+   - Windows: `powershell -ExecutionPolicy Bypass -File scripts/setup_first_time.ps1`
+   - macOS/Linux: install backend and frontend dependencies manually:
+     - `cd backend && python -m pip install -e ".[dev]"`
+     - `cd ../frontend && npm install`
+3. Start backend + frontend:
+   - Windows: `powershell -ExecutionPolicy Bypass -File scripts/start_ui.ps1`
+   - macOS/Linux: `bash scripts/start_ui.sh`
+4. Open `http://127.0.0.1:5173`.
+
+## Tests
+
+From repository root:
+
+```bash
+python -m pytest
 ```
 
-Manual commands:
-```powershell
-python -m pip install -e .[dev]
-$env:OPENAI_API_KEY="your_openai_api_key"
-python -m v2m.cli generate --style pop --key "C major" --bpm 120 --bars 8 --complexity 5 --seed 42 --output out/idea.mid
-python -m v2m.cli analyze --input .\path\to\idea.wav --scale-mode auto --genre-tags "trap,lofi"
-python -m streamlit run src/v2m/ui_app.py
-pytest
-```
+Covered areas:
+- Pitch detection
+- Drum transcription
+- Chord recognition
+- MIDI/audio export + ZIP packaging
 
-Generated MIDI files can be dragged into Ableton/FL Studio for manual validation.
-`analyze` exports a local project folder under `projects/` with:
-- raw and cleaned audio
-- `melody.mid`, `drums.mid`, `combined.mid`
-- `analysis.json`
-- `recipe.md`
+## Desktop Packaging
 
-UI features:
-- `Producer Copilot Chat`: primary ChatGPT-like interface
-- chat input supports text + audio/file attachments
-- real LLM tool-calling for:
-  - audio analysis to MIDI + recipe
-  - arrangement/harmony/groove guidance
-  - quick sketch generation
+- Dev shell: `cd frontend/src-tauri && cargo tauri dev`
+- Build installers:
+  - Windows: `cargo tauri build --bundles msi`
+  - macOS: `cargo tauri build --bundles dmg,app`
 
-Detailed first-time setup:
-- `docs/FIRST_TIME_SETUP.md`
+## Plugin
 
-## Available Styles
-- `pop`
-- `trap`
-- `lofi`
-- `edm`
-- `cinematic`
+See:
+- `plugin/PLUGIN.md`
+- `docs/PLUGIN.md`
 
-## Planning Docs
-- Product requirements: `docs/PRODUCT_REQUIREMENTS.md`
-- Architecture blueprint: `docs/SYSTEM_ARCHITECTURE.md`
-- Milestones and execution plan: `docs/PROJECT_PLAN.md`
-- Release phases: `docs/ROADMAP.md`
-
-## Separation Requirement
-This project is independent from BECA Project and `BECAFirmware`.
-No code, remotes, commits, or release history should be shared between them.

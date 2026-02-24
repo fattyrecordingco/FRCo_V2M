@@ -1,0 +1,18 @@
+[package]
+name = "vins-desktop"
+version = "0.1.1"
+description = "VINS Desktop Shell"
+authors = ["Fatty Recording Co"]
+edition = "2021"
+
+[build-dependencies]
+tauri-build = { version = "2.0.2", features = [] }
+
+[dependencies]
+tauri = { version = "2.1.1", features = ["tray-icon"] }
+tauri-plugin-shell = "2.0.2"
+
+[features]
+custom-protocol = ["tauri/custom-protocol"]
+
+
