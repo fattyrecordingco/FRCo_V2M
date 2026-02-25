@@ -23,6 +23,7 @@ frontend/src-tauri/target/
 dist/
 build/
 out/
+releases/
 coverage/
 
 # Local environment
