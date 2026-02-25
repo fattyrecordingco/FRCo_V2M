@@ -25,16 +25,26 @@ async function safeJson<T>(res: Response): Promise<T> {
 }
 
 function networkErrorMessage(error: unknown): string {
+  if (error instanceof DOMException && error.name === "AbortError") {
+    return "Request timed out while waiting for backend response. Please try again.";
+  }
   if (error instanceof Error && error.message) return error.message;
   return "Backend is not reachable. Ensure VINS backend is running on 127.0.0.1:8000.";
 }
 
 async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = 12000): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let didTimeout = false;
+  const timer = setTimeout(() => {
+    didTimeout = true;
+    controller.abort();
+  }, timeoutMs);
   try {
     return await fetch(input, { ...(init ?? {}), signal: controller.signal });
   } catch (error) {
+    if (didTimeout) {
+      throw new Error(`Request timed out after ${Math.round(timeoutMs / 1000)}s. Backend may still be processing.`);
+    }
     const msg = networkErrorMessage(error);
     throw new Error(msg);
   } finally {
@@ -69,7 +79,7 @@ export async function analyzeAudio(payload: AnalyzeRequest): Promise<AnalyzeResp
   if (payload.bpm) form.append("bpm", String(payload.bpm));
   if (payload.timeSignature) form.append("time_signature", payload.timeSignature);
   if (payload.sessionId) form.append("session_id", payload.sessionId);
-  const response = await fetchWithTimeout(`${API_BASE}/analyze`, { method: "POST", body: form }, 120000);
+  const response = await fetchWithTimeout(`${API_BASE}/analyze`, { method: "POST", body: form }, 300000);
   return safeJson<AnalyzeResponse>(response);
 }
 
@@ -87,12 +97,12 @@ export async function renameFile(
 }
 
 export async function getSessions(): Promise<SessionSummary[]> {
-  const response = await fetchWithTimeout(`${API_BASE}/sessions`, { method: "GET" }, 8000);
+  const response = await fetchWithTimeout(`${API_BASE}/sessions`, { method: "GET" }, 20000);
   return safeJson<SessionSummary[]>(response);
 }
 
 export async function getSessionFiles(sessionId: string): Promise<{ midi: FileEntry[]; audio: FileEntry[] }> {
-  const response = await fetchWithTimeout(`${API_BASE}/sessions/${sessionId}/files`, { method: "GET" }, 8000);
+  const response = await fetchWithTimeout(`${API_BASE}/sessions/${sessionId}/files`, { method: "GET" }, 20000);
   return safeJson<{ midi: FileEntry[]; audio: FileEntry[] }>(response);
 }
 

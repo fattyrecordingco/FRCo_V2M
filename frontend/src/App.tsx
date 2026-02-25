@@ -589,10 +589,18 @@ export default function App() {
       setResult(response);
       setSessionId(response.session_id);
       setActiveSession(response.session_id);
-      await loadSessionFiles(response.session_id, response);
-      await loadSessions();
       const defaultPreview = response.midi_files[0] ?? response.audio_files[0] ?? null;
       setSelectedPreview(defaultPreview);
+      try {
+        await loadSessionFiles(response.session_id, response);
+        await loadSessions();
+      } catch (refreshError) {
+        const refreshMessage =
+          refreshError instanceof Error ? refreshError.message : "Output panel refresh failed.";
+        setErrorMessage(
+          `MIDI generated successfully, but output refresh failed. ${refreshMessage} Select the session again to reload files.`
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : "Processing failed.";
       setErrorMessage(message);
