@@ -1,6 +1,7 @@
 # Python
 __pycache__/
 *.py[cod]
+.coverage
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
@@ -11,6 +12,8 @@ venv/
 node_modules/
 frontend/node_modules/
 frontend/dist/
+frontend/*.tsbuildinfo
+frontend/design-iterations/
 
 # Tauri / Rust
 frontend/src-tauri/target/
@@ -29,4 +32,3 @@ coverage/
 # Generated data
 projects/
 *.zip
-
