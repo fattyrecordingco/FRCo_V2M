@@ -65,7 +65,7 @@ async function runViewportChecks(page, viewport) {
     const height = Number.parseFloat(styles.height);
     return width / Math.max(height, 1);
   });
-  if (pianoRatio > 4.4 || pianoRatio < 3.0) {
+  if (pianoRatio > 5.3 || pianoRatio < 3.0) {
     throw new Error(`Piano proportions regressed at ${viewport.width}x${viewport.height} (${pianoRatio.toFixed(2)})`);
   }
   if (step2 && piano.y + piano.height > step2.y + step2.height + 10) {
@@ -101,6 +101,24 @@ async function runViewportChecks(page, viewport) {
   );
   if (titleRowsHaveExtras) {
     throw new Error(`Status badge content still visible in title rows at ${viewport.width}x${viewport.height}`);
+  }
+
+  const midiChart = await page.locator(".midi-mini-chart").count()
+    ? await page.locator(".midi-mini-chart").boundingBox()
+    : null;
+  const trackGrid = await page.locator(".track-grid").count()
+    ? await page.locator(".track-grid").boundingBox()
+    : null;
+  if (midiChart && trackGrid && intersects(midiChart, trackGrid)) {
+    throw new Error(`Preview chart overlaps track controls at ${viewport.width}x${viewport.height}`);
+  }
+
+  const panelHasInternalScroll = await page.evaluate(() => {
+    const panels = Array.from(document.querySelectorAll(".step-input, .step-prep, .step-preview"));
+    return panels.some((panel) => panel.scrollHeight > panel.clientHeight + 2);
+  });
+  if (panelHasInternalScroll) {
+    throw new Error(`Internal panel scroll detected at ${viewport.width}x${viewport.height}`);
   }
 
 }

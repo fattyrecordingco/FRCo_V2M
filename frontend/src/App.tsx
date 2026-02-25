@@ -735,6 +735,7 @@ export default function App() {
   const previewName = selectedPreview?.name ?? "No preview file selected";
   const activeSessionId = activeSession ?? sessionId ?? "";
   const canGenerate = Boolean(inputFile) && !processing;
+  const recentSessions = useMemo(() => sessions.slice(0, 4), [sessions]);
 
   return (
     <main className={`app-shell theme-${theme}`} data-theme={theme}>
@@ -1145,7 +1146,7 @@ export default function App() {
 
             <div className="session-list scroll-region session-compact-list">
               {sessions.length === 0 && <div className="muted-text">No saved sessions yet.</div>}
-              {sessions.map((session) => (
+              {recentSessions.map((session) => (
                 <button
                   key={session.session_id}
                   type="button"
@@ -1156,6 +1157,11 @@ export default function App() {
                   <span className="session-meta">{session.run_count} runs</span>
                 </button>
               ))}
+              {sessions.length > recentSessions.length && (
+                <div className="muted-text">
+                  +{sessions.length - recentSessions.length} more sessions in dropdown
+                </div>
+              )}
             </div>
           </section>
         </div>

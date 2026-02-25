@@ -579,6 +579,10 @@ input.input {
   gap: var(--space-1);
 }
 
+.waveform-panel-empty {
+  grid-template-rows: 1fr;
+}
+
 .waveform-shell {
   width: 100%;
   min-height: clamp(68px, 10vh, 118px);
@@ -628,7 +632,7 @@ input.input {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr);
   gap: var(--space-2);
-  align-items: stretch;
+  align-items: start;
 }
 
 .preview-core,
@@ -835,13 +839,13 @@ input.input {
 }
 
 .piano-frame {
-  width: clamp(320px, 48vw, 560px);
-  min-width: 320px;
-  max-width: 560px;
-  aspect-ratio: 7 / 1.55;
+  width: clamp(280px, 42vw, 500px);
+  min-width: 280px;
+  max-width: 500px;
+  aspect-ratio: 7 / 1.8;
   height: auto;
-  min-height: 78px;
-  max-height: 126px;
+  min-height: 64px;
+  max-height: 100px;
   position: relative;
   border-radius: var(--radius-sm);
   background: #fff;
@@ -881,8 +885,8 @@ input.input {
   position: absolute;
   top: 0;
   z-index: 2;
-  width: 9.2%;
-  height: 58%;
+  width: 8.8%;
+  height: 54%;
   transform: translateX(-50%);
   border-radius: 0 0 10px 10px;
   border: 1px solid var(--line);
@@ -906,7 +910,7 @@ input.input {
   display: grid;
   grid-template-rows: auto auto auto minmax(0, 1fr);
   align-content: start;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .output-header-row {
@@ -942,13 +946,13 @@ input.input {
 
 .file-table-shell {
   min-height: 54px;
-  max-height: clamp(98px, 15vh, 152px);
+  max-height: none;
   border-radius: var(--radius-sm);
   background: var(--bg-panel-soft);
   padding: var(--space-1);
   display: grid;
   gap: var(--space-1);
-  overflow: auto;
+  overflow: hidden;
 }
 
 .file-empty {
@@ -1011,10 +1015,10 @@ input.input {
 }
 
 .session-compact-list {
-  min-height: 110px;
-  max-height: clamp(116px, 24vh, 250px);
-  overflow: auto;
-  padding-right: var(--space-1);
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
 }
 
 .session-item {
@@ -1026,7 +1030,7 @@ input.input {
   display: grid;
   gap: 2px;
   cursor: pointer;
-  min-height: clamp(52px, 7vh, 68px);
+  min-height: clamp(40px, 5.3vh, 54px);
 }
 
 .session-item.is-active {
@@ -1046,7 +1050,7 @@ input.input {
 
 .scroll-region {
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
 }
 
 .truncate {
@@ -1106,28 +1110,20 @@ input[type="range"]:focus-visible,
     gap: var(--space-2);
   }
 
-  .file-table-shell {
-    max-height: clamp(84px, 12vh, 118px);
-  }
-
-  .session-compact-list {
-    max-height: clamp(92px, 20vh, 166px);
-  }
-
   .scale-note-summary {
     display: none;
   }
 
   .piano-frame {
-    width: clamp(300px, 44vw, 520px);
-    min-width: 300px;
-    max-width: 520px;
-    min-height: 72px;
-    max-height: 112px;
+    width: clamp(280px, 40vw, 460px);
+    min-width: 280px;
+    max-width: 460px;
+    min-height: 60px;
+    max-height: 92px;
   }
 
   .piano-key-black {
-    height: 56%;
+    height: 52%;
   }
 
   .dropzone {
@@ -1138,11 +1134,10 @@ input[type="range"]:focus-visible,
 @media (max-width: 1480px) {
   .app-grid {
     grid-template-columns: minmax(300px, 1fr) minmax(500px, 1.5fr);
-    grid-template-rows: auto auto auto;
+    grid-template-rows: auto auto;
     grid-template-areas:
       "input prep"
-      "output prep"
-      "preview preview";
+      "output preview";
   }
 
   .output-header-row {
@@ -1150,11 +1145,11 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    width: clamp(300px, 56vw, 500px);
-    min-width: 300px;
-    max-width: 500px;
-    min-height: 72px;
-    max-height: 108px;
+    width: clamp(280px, 48vw, 430px);
+    min-width: 280px;
+    max-width: 430px;
+    min-height: 66px;
+    max-height: 104px;
   }
 }
 
@@ -1217,11 +1212,11 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    width: clamp(280px, 80vw, 420px);
-    min-width: 280px;
-    max-width: 420px;
-    min-height: 66px;
-    max-height: 98px;
+    width: clamp(240px, 74vw, 360px);
+    min-width: 240px;
+    max-width: 360px;
+    min-height: 52px;
+    max-height: 78px;
   }
 }
 
@@ -1260,11 +1255,11 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    width: min(88vw, 360px);
-    min-width: 240px;
-    max-width: 360px;
-    min-height: 58px;
-    max-height: 86px;
+    width: min(86vw, 320px);
+    min-width: 210px;
+    max-width: 320px;
+    min-height: 48px;
+    max-height: 70px;
   }
 }
 
@@ -1289,18 +1284,10 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    width: clamp(300px, 44vw, 520px);
-    min-width: 300px;
-    max-width: 520px;
-    min-height: 70px;
-    max-height: 108px;
-  }
-
-  .file-table-shell {
-    max-height: clamp(74px, 11vh, 102px);
-  }
-
-  .session-compact-list {
-    max-height: clamp(90px, 16vh, 150px);
+    width: clamp(280px, 40vw, 440px);
+    min-width: 280px;
+    max-width: 440px;
+    min-height: 56px;
+    max-height: 84px;
   }
 }
