@@ -59,6 +59,10 @@ async function runViewportChecks(page, viewport) {
   if (!piano || piano.width < 100 || piano.height < 50) {
     throw new Error(`Piano picker failed to render at ${viewport.width}x${viewport.height}`);
   }
+  const pianoRatio = piano.width / piano.height;
+  if (pianoRatio > 10.4 || pianoRatio < 6.1) {
+    throw new Error(`Piano proportions regressed at ${viewport.width}x${viewport.height} (${pianoRatio.toFixed(2)})`);
+  }
   if (step2 && piano.y + piano.height > step2.y + step2.height + 2) {
     throw new Error(`Prep panel clipped piano at ${viewport.width}x${viewport.height}`);
   }
@@ -124,8 +128,12 @@ async function main() {
     }
 
     const page = await browser.newPage();
+    await runViewportChecks(page, { width: 1024, height: 768 });
+    await runViewportChecks(page, { width: 1152, height: 720 });
     await runViewportChecks(page, { width: 1280, height: 720 });
+    await runViewportChecks(page, { width: 1220, height: 680 });
     await runViewportChecks(page, { width: 1366, height: 768 });
+    await runViewportChecks(page, { width: 1400, height: 700 });
     await runViewportChecks(page, { width: 1600, height: 900 });
     await runViewportChecks(page, { width: 1664, height: 936 });
     await runViewportChecks(page, { width: 1820, height: 860 });

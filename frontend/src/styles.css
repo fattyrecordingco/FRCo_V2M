@@ -124,7 +124,7 @@ body {
 
 .app-frame {
   width: 100%;
-  min-height: 100%;
+  min-height: max-content;
   height: auto;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
@@ -204,11 +204,12 @@ body {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(470px, 1.55fr) minmax(300px, 1fr);
-  grid-template-rows: auto minmax(230px, 1fr);
+  grid-template-rows: auto auto;
   grid-template-areas:
     "input prep output"
     "input preview output";
   gap: var(--space-3);
+  align-items: start;
 }
 
 .step-panel {
@@ -217,8 +218,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  overflow: auto;
-  scrollbar-gutter: stable;
+  overflow: hidden;
 }
 
 .frame-fit {
@@ -771,14 +771,22 @@ input.input {
 .piano-scroll {
   overflow-x: auto;
   padding-bottom: 2px;
+  display: flex;
+  justify-content: center;
 }
 
 .piano-frame {
+  width: min(100%, 760px);
   min-width: 420px;
-  height: clamp(58px, 8.2vh, 76px);
+  max-width: 760px;
+  aspect-ratio: 7 / 1;
+  height: auto;
+  min-height: 74px;
+  max-height: 122px;
   position: relative;
   border-radius: var(--radius-sm);
   background: #fff;
+  flex: 0 0 auto;
 }
 
 .theme-dark .piano-frame {
@@ -804,7 +812,10 @@ input.input {
   color: #161428;
   font-size: clamp(10px, 0.66vw, 12px);
   font-weight: 800;
-  padding-top: clamp(26px, 3.8vh, 40px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: clamp(5px, 0.8vh, 10px);
 }
 
 .piano-key-black {
@@ -812,7 +823,7 @@ input.input {
   top: 0;
   z-index: 2;
   width: 9%;
-  height: clamp(34px, 5vh, 46px);
+  height: 60%;
   transform: translateX(-50%);
   border-radius: 0 0 7px 7px;
   border: 1px solid var(--line);
@@ -821,6 +832,9 @@ input.input {
   font-size: clamp(8px, 0.52vw, 10px);
   font-weight: 800;
   line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .piano-key-active {
@@ -1029,7 +1043,7 @@ input[type="range"]:focus-visible,
   }
 
   .app-grid {
-    grid-template-rows: auto minmax(180px, 1fr);
+    grid-template-rows: auto auto;
     gap: var(--space-2);
   }
 
@@ -1046,15 +1060,15 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    height: clamp(52px, 6.9vh, 66px);
-  }
-
-  .piano-key-white {
-    padding-top: clamp(22px, 3vh, 30px);
+    width: min(100%, 700px);
+    min-width: 360px;
+    max-width: 700px;
+    min-height: 64px;
+    max-height: 100px;
   }
 
   .piano-key-black {
-    height: clamp(30px, 4vh, 38px);
+    height: 58%;
   }
 
   .dropzone {
@@ -1062,30 +1076,21 @@ input[type="range"]:focus-visible,
   }
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1480px) {
   .app-grid {
-    grid-template-columns: minmax(250px, 0.95fr) minmax(420px, 1.25fr);
-    grid-template-rows: auto auto auto;
+    grid-template-columns: minmax(300px, 1fr) minmax(460px, 1.45fr);
+    grid-template-rows: auto auto;
     grid-template-areas:
       "input prep"
-      "output prep"
-      "preview preview";
-  }
-
-  .step-preview {
-    min-height: clamp(240px, 33vh, 340px);
+      "output preview";
   }
 
   .output-header-row {
     grid-template-columns: 1fr;
   }
-
-  .step-panel {
-    overflow: visible;
-  }
 }
 
-@media (max-width: 1040px) {
+@media (max-width: 920px) {
   .app-shell {
     padding: var(--space-3);
     overflow: auto;
@@ -1137,6 +1142,12 @@ input[type="range"]:focus-visible,
   .session-field-grid {
     grid-template-columns: 1fr;
   }
+
+  .piano-frame {
+    width: min(100%, 640px);
+    min-width: 340px;
+    max-width: 640px;
+  }
 }
 
 @media (max-width: 700px) {
@@ -1171,5 +1182,50 @@ input[type="range"]:focus-visible,
 
   .compact-row {
     gap: var(--space-1);
+  }
+
+  .piano-frame {
+    width: min(100%, 520px);
+    min-width: 290px;
+    max-width: 520px;
+    min-height: 58px;
+    max-height: 88px;
+  }
+}
+
+@media (max-height: 760px) and (min-width: 1000px) {
+  :root {
+    --space-1: 3px;
+    --space-2: 5px;
+    --space-3: 7px;
+    --space-4: 9px;
+    --size-panel-title: clamp(20px, 1.4vw, 25px);
+    --size-ui: clamp(11px, 0.75vw, 13px);
+    --size-label: clamp(9px, 0.55vw, 11px);
+    --control-h: clamp(26px, 2vh, 32px);
+  }
+
+  .step-panel {
+    gap: var(--space-1);
+  }
+
+  .waveform-shell {
+    min-height: clamp(58px, 9vh, 82px);
+  }
+
+  .piano-frame {
+    width: min(100%, 620px);
+    min-width: 330px;
+    max-width: 620px;
+    min-height: 56px;
+    max-height: 88px;
+  }
+
+  .file-table-shell {
+    max-height: clamp(74px, 11vh, 102px);
+  }
+
+  .session-compact-list {
+    max-height: clamp(90px, 16vh, 150px);
   }
 }
