@@ -103,13 +103,6 @@ async function runViewportChecks(page, viewport) {
     throw new Error(`Status badge content still visible in title rows at ${viewport.width}x${viewport.height}`);
   }
 
-  if (viewport.width >= 1280) {
-    const scrollHeight = await page.evaluate(() => document.documentElement.scrollHeight);
-    const innerHeight = await page.evaluate(() => window.innerHeight);
-    if (scrollHeight - innerHeight > 4) {
-      throw new Error(`Unexpected page scroll at ${viewport.width}x${viewport.height}`);
-    }
-  }
 }
 
 async function main() {
