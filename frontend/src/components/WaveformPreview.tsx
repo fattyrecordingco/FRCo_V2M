@@ -82,7 +82,13 @@ export default function WaveformPreview({ audioUrl }: Props) {
   }, [audioUrl, canvasWidth, canvasHeight]);
 
   if (!audioUrl) {
-    return <div className="text-xs text-slate-500">No audio loaded.</div>;
+    return (
+      <div ref={containerRef} className="waveform-panel waveform-panel-empty">
+        <div className="waveform-shell waveform-shell-empty">
+          <div className="waveform-empty">No audio loaded yet. Record or upload to preview waveform.</div>
+        </div>
+      </div>
+    );
   }
 
   return (

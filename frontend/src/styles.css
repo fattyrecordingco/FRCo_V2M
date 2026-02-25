@@ -116,19 +116,19 @@ body {
 .app-shell {
   width: 100%;
   height: 100%;
-  padding: var(--space-3);
+  padding: var(--space-2);
   background: var(--bg-canvas);
   color: var(--text-main);
-  overflow: auto;
+  overflow: hidden;
 }
 
 .app-frame {
   width: 100%;
-  min-height: max-content;
-  height: auto;
+  min-height: 100%;
+  height: 100%;
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .panel {
@@ -141,8 +141,8 @@ body {
 }
 
 .app-header {
-  min-height: clamp(66px, 9vh, 82px);
-  padding: var(--space-3) var(--space-4);
+  min-height: clamp(58px, 7.4vh, 72px);
+  padding: var(--space-2) var(--space-3);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -204,12 +204,12 @@ body {
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(470px, 1.55fr) minmax(300px, 1fr);
-  grid-template-rows: auto auto;
+  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
   grid-template-areas:
     "input prep output"
     "input preview output";
-  gap: var(--space-3);
-  align-items: start;
+  gap: var(--space-2);
+  align-items: stretch;
 }
 
 .step-panel {
@@ -218,7 +218,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  overflow: hidden;
+  overflow: auto;
+  scrollbar-gutter: stable;
 }
 
 .frame-fit {
@@ -233,6 +234,7 @@ body {
 .step-prep {
   grid-area: prep;
   background: var(--panel-prep);
+  overflow: visible;
 }
 
 .step-preview {
@@ -572,6 +574,7 @@ input.input {
 
 .waveform-panel {
   min-height: 0;
+  flex: 1;
   display: grid;
   grid-template-rows: auto auto auto;
   gap: var(--space-1);
@@ -579,10 +582,26 @@ input.input {
 
 .waveform-shell {
   width: 100%;
-  min-height: clamp(72px, 11vh, 106px);
+  min-height: clamp(92px, 15vh, 176px);
   overflow: hidden;
   border-radius: var(--radius-md);
   background: var(--wave-bg);
+}
+
+.waveform-shell-empty {
+  border-style: solid;
+  display: grid;
+  place-items: center;
+  padding: var(--space-2);
+  background: var(--bg-panel-muted);
+}
+
+.waveform-empty {
+  color: var(--text-muted);
+  font-size: var(--size-micro);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-align: center;
 }
 
 .waveform-canvas {
@@ -610,13 +629,20 @@ input.input {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr);
   gap: var(--space-2);
-  align-items: start;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
 
 .preview-core,
 .preview-side {
   display: grid;
   gap: var(--space-2);
+  align-content: start;
+}
+
+.preview-core {
+  grid-template-rows: auto minmax(90px, 1fr);
 }
 
 .preview-current,
@@ -642,6 +668,7 @@ input.input {
 .midi-mini {
   display: grid;
   gap: var(--space-1);
+  min-height: 0;
 }
 
 .midi-mini-head {
@@ -654,11 +681,26 @@ input.input {
 }
 
 .midi-mini-chart {
-  min-height: clamp(44px, 6.8vh, 66px);
+  min-height: clamp(90px, 11.2vh, 170px);
   border-radius: var(--radius-sm);
   background: var(--bg-panel-soft);
   position: relative;
   overflow: hidden;
+  height: 100%;
+}
+
+.midi-mini-chart::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to right,
+    rgb(127 118 166 / 0.08) 0,
+    rgb(127 118 166 / 0.08) 1px,
+    transparent 1px,
+    transparent 7.14%
+  );
+  pointer-events: none;
 }
 
 .midi-mini-note {
@@ -666,6 +708,20 @@ input.input {
   height: 7px;
   border-radius: 999px;
   background: var(--accent);
+  z-index: 1;
+}
+
+.midi-mini-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 var(--space-3);
+  color: var(--text-muted);
+  text-align: center;
+  font-size: var(--size-micro);
+  font-weight: 700;
+  letter-spacing: 0.03em;
 }
 
 .loading-spinner {
@@ -707,6 +763,10 @@ input.input {
 
 .preview-play-row {
   justify-content: flex-start;
+}
+
+.step-preview .track-grid {
+  margin-top: auto;
 }
 
 .slider-row,
@@ -765,24 +825,25 @@ input.input {
 .piano-wrap {
   border-radius: var(--radius-md);
   background: var(--bg-panel-soft);
-  padding: var(--space-1);
+  padding: var(--space-2);
 }
 
 .piano-scroll {
   overflow-x: auto;
-  padding-bottom: 2px;
+  overflow-y: hidden;
+  padding-bottom: 0;
   display: flex;
   justify-content: center;
 }
 
 .piano-frame {
-  width: min(100%, 760px);
+  width: clamp(420px, 58vw, 740px);
   min-width: 420px;
-  max-width: 760px;
-  aspect-ratio: 7 / 1;
+  max-width: 740px;
+  aspect-ratio: 7 / 2;
   height: auto;
-  min-height: 74px;
-  max-height: 122px;
+  min-height: 120px;
+  max-height: 210px;
   position: relative;
   border-radius: var(--radius-sm);
   background: #fff;
@@ -795,10 +856,10 @@ input.input {
 
 .piano-white-row {
   position: absolute;
-  inset: 1px;
+  inset: 2px;
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: 1px;
+  gap: 2px;
 }
 
 .piano-key {
@@ -807,29 +868,29 @@ input.input {
 
 .piano-key-white {
   border: 1px solid var(--line-soft);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 10px 10px;
   background: #f9f6f1;
   color: #161428;
-  font-size: clamp(10px, 0.66vw, 12px);
+  font-size: clamp(10px, 0.7vw, 13px);
   font-weight: 800;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding-bottom: clamp(5px, 0.8vh, 10px);
+  padding-bottom: clamp(8px, 1.3vh, 14px);
 }
 
 .piano-key-black {
   position: absolute;
   top: 0;
   z-index: 2;
-  width: 9%;
-  height: 60%;
+  width: 9.5%;
+  height: 64%;
   transform: translateX(-50%);
-  border-radius: 0 0 7px 7px;
+  border-radius: 0 0 10px 10px;
   border: 1px solid var(--line);
   background: #312f47;
   color: #fff;
-  font-size: clamp(8px, 0.52vw, 10px);
+  font-size: clamp(9px, 0.6vw, 11px);
   font-weight: 800;
   line-height: 1;
   display: inline-flex;
@@ -1022,7 +1083,7 @@ input[type="range"]:focus-visible,
   }
 }
 
-@media (max-height: 850px) {
+@media (max-height: 900px) {
   :root {
     --size-title: clamp(30px, 2.4vw, 42px);
     --size-panel-title: clamp(22px, 1.7vw, 30px);
@@ -1043,7 +1104,7 @@ input[type="range"]:focus-visible,
   }
 
   .app-grid {
-    grid-template-rows: auto auto;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
     gap: var(--space-2);
   }
 
@@ -1060,15 +1121,15 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    width: min(100%, 700px);
+    width: clamp(360px, 56vw, 680px);
     min-width: 360px;
-    max-width: 700px;
-    min-height: 64px;
-    max-height: 100px;
+    max-width: 680px;
+    min-height: 104px;
+    max-height: 172px;
   }
 
   .piano-key-black {
-    height: 58%;
+    height: 62%;
   }
 
   .dropzone {
@@ -1078,15 +1139,24 @@ input[type="range"]:focus-visible,
 
 @media (max-width: 1480px) {
   .app-grid {
-    grid-template-columns: minmax(300px, 1fr) minmax(460px, 1.45fr);
-    grid-template-rows: auto auto;
+    grid-template-columns: minmax(300px, 1fr) minmax(500px, 1.5fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(190px, 0.95fr);
     grid-template-areas:
       "input prep"
-      "output preview";
+      "output prep"
+      "preview preview";
   }
 
   .output-header-row {
     grid-template-columns: 1fr;
+  }
+
+  .piano-frame {
+    width: clamp(360px, 64vw, 580px);
+    min-width: 360px;
+    max-width: 580px;
+    min-height: 96px;
+    max-height: 154px;
   }
 }
 
@@ -1094,6 +1164,11 @@ input[type="range"]:focus-visible,
   .app-shell {
     padding: var(--space-3);
     overflow: auto;
+  }
+
+  .app-frame {
+    min-height: max-content;
+    height: auto;
   }
 
   .app-grid {
@@ -1144,9 +1219,11 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    width: min(100%, 640px);
-    min-width: 340px;
-    max-width: 640px;
+    width: clamp(300px, 82vw, 460px);
+    min-width: 300px;
+    max-width: 460px;
+    min-height: 80px;
+    max-height: 118px;
   }
 }
 
@@ -1185,11 +1262,11 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    width: min(100%, 520px);
+    width: min(84vw, 520px);
     min-width: 290px;
     max-width: 520px;
-    min-height: 58px;
-    max-height: 88px;
+    min-height: 88px;
+    max-height: 138px;
   }
 }
 
@@ -1214,11 +1291,11 @@ input[type="range"]:focus-visible,
   }
 
   .piano-frame {
-    width: min(100%, 620px);
+    width: clamp(330px, 52vw, 620px);
     min-width: 330px;
     max-width: 620px;
-    min-height: 56px;
-    max-height: 88px;
+    min-height: 92px;
+    max-height: 146px;
   }
 
   .file-table-shell {

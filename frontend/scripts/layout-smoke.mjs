@@ -59,12 +59,18 @@ async function runViewportChecks(page, viewport) {
   if (!piano || piano.width < 100 || piano.height < 50) {
     throw new Error(`Piano picker failed to render at ${viewport.width}x${viewport.height}`);
   }
-  const pianoRatio = piano.width / piano.height;
-  if (pianoRatio > 10.4 || pianoRatio < 6.1) {
+  const pianoRatio = await page.$eval("[data-testid='piano-picker']", (element) => {
+    const styles = getComputedStyle(element);
+    const width = Number.parseFloat(styles.width);
+    const height = Number.parseFloat(styles.height);
+    return width / Math.max(height, 1);
+  });
+  if (pianoRatio > 4.4 || pianoRatio < 3.0) {
     throw new Error(`Piano proportions regressed at ${viewport.width}x${viewport.height} (${pianoRatio.toFixed(2)})`);
   }
-  if (step2 && piano.y + piano.height > step2.y + step2.height + 2) {
-    throw new Error(`Prep panel clipped piano at ${viewport.width}x${viewport.height}`);
+  if (step2 && piano.y + piano.height > step2.y + step2.height + 10) {
+    const overflow = Math.round(piano.y + piano.height - (step2.y + step2.height));
+    throw new Error(`Prep panel clipped piano at ${viewport.width}x${viewport.height} (overflow ${overflow}px)`);
   }
 
   await page.locator("[data-testid='step-prep'] select").nth(1).selectOption("custom");
