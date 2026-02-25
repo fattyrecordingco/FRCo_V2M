@@ -29,45 +29,50 @@ export default function PianoScalePicker({ selected, onChange, lockedNotes = [] 
   const isActive = (note: string) => activeSet.has(note) || lockedSet.has(note);
 
   return (
-    <div className="space-y-2">
-      <div className="text-xs font-semibold">Scale Keys</div>
-      <div className="relative select-none rounded-xl border border-base-100 bg-slate-100 p-2">
-        <div className="relative h-24">
-          <div className="absolute inset-0 grid grid-cols-7 gap-1">
-            {WHITE_KEYS.map((note) => (
+    <div className="piano-root">
+      <div className="piano-label-row">
+        <span className="field-label">Scale Keys</span>
+      </div>
+      <div className="piano-wrap">
+        <div className="piano-scroll">
+          <div className="piano-frame" data-testid="piano-picker">
+            <div className="piano-white-row">
+              {WHITE_KEYS.map((note) => (
+                <button
+                  key={note}
+                  type="button"
+                  onClick={() => toggle(note)}
+                  title={`Toggle ${note}`}
+                  aria-pressed={isActive(note)}
+                  className={`piano-key piano-key-white ${
+                    isActive(note)
+                      ? "piano-key-active"
+                      : "piano-key-inactive"
+                  }`}
+                >
+                  {note}
+                </button>
+              ))}
+            </div>
+            {BLACK_KEYS.map((key) => (
               <button
-                key={note}
+                key={key.note}
                 type="button"
-                onClick={() => toggle(note)}
-                className={`relative rounded-b-lg border pb-1 pt-12 text-center text-[11px] font-semibold transition ${
-                  isActive(note)
-                    ? "border-accent-500 bg-accent-500/90 text-white"
-                    : "border-base-200 bg-white text-slate-800"
+                onClick={() => toggle(key.note)}
+                style={{ left: `${key.leftPercent}%` }}
+                title={`Toggle ${key.note}`}
+                aria-pressed={isActive(key.note)}
+                className={`piano-key piano-key-black ${
+                  isActive(key.note)
+                    ? "piano-key-active"
+                    : "piano-key-inactive"
                 }`}
               >
-                {note}
+                {key.note}
               </button>
             ))}
           </div>
-          {BLACK_KEYS.map((key) => (
-            <button
-              key={key.note}
-              type="button"
-              onClick={() => toggle(key.note)}
-              style={{ left: `${key.leftPercent}%` }}
-              className={`absolute top-0 z-10 h-14 w-[8.6%] -translate-x-1/2 rounded-b-md border border-slate-900 text-center text-[10px] font-semibold transition ${
-                isActive(key.note)
-                  ? "bg-accent-500 text-white"
-                  : "bg-slate-900 text-slate-100 hover:bg-slate-800"
-              }`}
-            >
-              {key.note}
-            </button>
-          ))}
         </div>
-      </div>
-      <div className="text-[11px] text-slate-500">
-        One octave (C-B). Click keys to set scale.
       </div>
     </div>
   );

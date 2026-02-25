@@ -1,4 +1,4 @@
-﻿import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChangeEvent, DragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as Tone from "tone";
 
 import FileTable from "./components/FileTable";
@@ -31,7 +31,6 @@ const SCALE_PRESETS: Record<string, string[]> = {
 };
 
 type InstrumentPreset = "piano" | "synth" | "acoustic_drums" | "electro_808";
-type OutputTab = "midi" | "audio" | "sessions";
 const AUDIO_EXT_PATTERN = /\.(wav|mp3|flac|ogg|m4a|aac|aiff|webm)$/i;
 const RECORDER_MIME_CANDIDATES = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
 
@@ -40,6 +39,82 @@ const initialTrackState = {
   chords: { mute: false, solo: false },
   drums: { mute: false, solo: false }
 };
+
+function IconMic() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M12 15a4 4 0 0 0 4-4V7a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4Z" />
+      <path d="M5 11a1 1 0 1 1 2 0 5 5 0 0 0 10 0 1 1 0 1 1 2 0 7 7 0 0 1-6 6.92V21h2a1 1 0 1 1 0 2H9a1 1 0 0 1 0-2h2v-3.08A7 7 0 0 1 5 11Z" />
+    </svg>
+  );
+}
+
+function IconUpload() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M12 3a1 1 0 0 1 .72.3l4 4a1 1 0 0 1-1.44 1.4L13 6.42V15a1 1 0 1 1-2 0V6.42L8.72 8.7a1 1 0 1 1-1.44-1.4l4-4A1 1 0 0 1 12 3Z" />
+      <path d="M5 14a1 1 0 0 1 1 1v3h12v-3a1 1 0 1 1 2 0v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+function IconPlay() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M8.5 5.4a1 1 0 0 1 1.5-.86l9.5 6.1a1 1 0 0 1 0 1.68l-9.5 6.1A1 1 0 0 1 8.5 17.6V5.4Z" />
+    </svg>
+  );
+}
+
+function IconGenerate() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M11 3a1 1 0 0 1 .95.68l1.2 3.58 3.78.03a1 1 0 0 1 .58 1.81l-3.04 2.25 1.15 3.6a1 1 0 0 1-1.53 1.1L11 13.8l-3.11 2.25a1 1 0 0 1-1.53-1.1l1.16-3.6L4.47 9.1a1 1 0 0 1 .59-1.8l3.78-.04 1.2-3.58A1 1 0 0 1 11 3Z" />
+      <path d="M18 15a1 1 0 0 1 1 1v3h-3a1 1 0 1 1 0-2h1v-1a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+function IconDownload() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M12 3a1 1 0 0 1 1 1v8.58l2.3-2.29a1 1 0 1 1 1.4 1.42l-4 3.97a1 1 0 0 1-1.4 0l-4-3.97a1 1 0 1 1 1.4-1.42L11 12.58V4a1 1 0 0 1 1-1Z" />
+      <path d="M5 15a1 1 0 0 1 1 1v3h12v-3a1 1 0 1 1 2 0v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+function IconSun() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M12 4a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0V5a1 1 0 0 1 1-1Z" />
+      <path d="M12 17a1 1 0 0 1 1 1v1a1 1 0 1 1-2 0v-1a1 1 0 0 1 1-1Z" />
+      <path d="M6.34 6.34a1 1 0 0 1 1.41 0l.71.7a1 1 0 0 1-1.41 1.42l-.7-.71a1 1 0 0 1 0-1.41Z" />
+      <path d="M16.95 16.95a1 1 0 0 1 1.41 0l.71.71a1 1 0 0 1-1.41 1.41l-.71-.7a1 1 0 0 1 0-1.42Z" />
+      <path d="M4 12a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2H5a1 1 0 0 1-1-1Z" />
+      <path d="M17 12a1 1 0 0 1 1-1h1a1 1 0 1 1 0 2h-1a1 1 0 0 1-1-1Z" />
+      <path d="M6.34 17.66a1 1 0 0 1 0-1.41l.7-.71a1 1 0 0 1 1.42 1.41l-.71.71a1 1 0 0 1-1.41 0Z" />
+      <path d="M16.95 7.05a1 1 0 0 1 0-1.41l.71-.71a1 1 0 1 1 1.41 1.41l-.7.71a1 1 0 0 1-1.42 0Z" />
+      <path d="M12 8a4 4 0 1 1 0 8 4 4 0 0 1 0-8Z" />
+    </svg>
+  );
+}
+
+function IconMoon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M14.48 3.16a1 1 0 0 1 1.09 1.4A7 7 0 1 0 19.44 13a1 1 0 0 1 1.41 1.12A9 9 0 1 1 13.37 3.2a1 1 0 0 1 1.11-.03Z" />
+    </svg>
+  );
+}
+
+function IconSpark() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M11 3a1 1 0 0 1 .95.68l1.2 3.58 3.78.03a1 1 0 0 1 .58 1.81l-3.04 2.25 1.15 3.6a1 1 0 0 1-1.53 1.1L11 13.8l-3.11 2.25a1 1 0 0 1-1.53-1.1l1.16-3.6L4.47 9.1a1 1 0 0 1 .59-1.8l3.78-.04 1.2-3.58A1 1 0 0 1 11 3Z" />
+    </svg>
+  );
+}
 
 function pickRecorderMimeType(): string | undefined {
   if (typeof MediaRecorder === "undefined") return undefined;
@@ -157,6 +232,7 @@ export default function App() {
   const [selectedDevice, setSelectedDevice] = useState<string>("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordLevel, setRecordLevel] = useState(0);
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
@@ -185,7 +261,6 @@ export default function App() {
   const [midiFiles, setMidiFiles] = useState<FileEntry[]>([]);
   const [audioFiles, setAudioFiles] = useState<FileEntry[]>([]);
   const [selectedPreview, setSelectedPreview] = useState<FileEntry | null>(null);
-  const [outputTab, setOutputTab] = useState<OutputTab>("midi");
 
   const [instrument, setInstrument] = useState<InstrumentPreset>("piano");
   const [volume, setVolume] = useState(0.8);
@@ -195,32 +270,82 @@ export default function App() {
 
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activeSession, setActiveSession] = useState<string | null>(null);
+  const [theme, setTheme] = useState<"dark" | "light">(() => {
+    if (typeof window === "undefined") return "light";
+    const stored = window.localStorage.getItem("vins-theme");
+    return stored === "dark" ? "dark" : "light";
+  });
+
+  const loadSessions = useCallback(async () => {
+    try {
+      const sessionRows = await getSessions();
+      setSessions(sessionRows);
+    } catch {
+      setSessions([]);
+    }
+  }, []);
+
+  const refreshAudioDevices = useCallback(async () => {
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const inputs = devices.filter((device) => device.kind === "audioinput");
+      setAudioDevices(inputs);
+      if (inputs.length === 0) {
+        setSelectedDevice("");
+        return;
+      }
+      setSelectedDevice((current) => {
+        if (current && inputs.some((device) => device.deviceId === current)) return current;
+        const preferred =
+          inputs.find((device) => /default/i.test(device.label)) ??
+          inputs.find((device) => /default/i.test(device.deviceId)) ??
+          inputs[0];
+        return preferred.deviceId;
+      });
+    } catch {
+      setAudioDevices([]);
+      setSelectedDevice("");
+    }
+  }, []);
 
   useEffect(() => {
+    let disposed = false;
+    void refreshAudioDevices();
     void (async () => {
       try {
         await ensureBackendReady(30, 300);
+        if (disposed) return;
         await loadSessions();
       } catch (error) {
+        if (disposed) return;
         const message = error instanceof Error ? error.message : "Backend is not available.";
         setErrorMessage(message);
       }
     })();
-    void refreshAudioDevices();
     return () => {
-      if (audioUrl) URL.revokeObjectURL(audioUrl);
+      disposed = true;
       stopMeter();
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [loadSessions, refreshAudioDevices]);
+
+  useEffect(() => {
+    return () => {
+      if (audioUrl) URL.revokeObjectURL(audioUrl);
+    };
+  }, [audioUrl]);
 
   useEffect(() => {
     const db = volume <= 0 ? -60 : 20 * Math.log10(volume);
     Tone.Destination.volume.value = db;
   }, [volume]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem("vins-theme", theme);
+  }, [theme]);
 
   useEffect(() => {
     if (!result) return;
@@ -231,6 +356,18 @@ export default function App() {
       if (scale !== "custom") setScale(result.metadata.analysis.scale);
     }
   }, [result, autoPitchTime, scale]);
+
+  useEffect(() => {
+    const mediaDevices = navigator.mediaDevices;
+    if (!mediaDevices?.addEventListener) return;
+    const onDeviceChange = () => {
+      void refreshAudioDevices();
+    };
+    mediaDevices.addEventListener("devicechange", onDeviceChange);
+    return () => {
+      mediaDevices.removeEventListener("devicechange", onDeviceChange);
+    };
+  }, [refreshAudioDevices]);
 
   const noteEvents = useMemo(() => {
     if (!result) return [];
@@ -305,30 +442,6 @@ export default function App() {
     meterRafRef.current = requestAnimationFrame(tick);
   }
 
-  async function loadSessions() {
-    try {
-      const sessionRows = await getSessions();
-      setSessions(sessionRows);
-    } catch {
-      setSessions([]);
-    }
-  }
-
-  async function refreshAudioDevices() {
-    try {
-      const permissionStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      permissionStream.getTracks().forEach((track) => track.stop());
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const inputs = devices.filter((device) => device.kind === "audioinput");
-      setAudioDevices(inputs);
-      if (inputs.length > 0 && !selectedDevice) {
-        setSelectedDevice(inputs[0].deviceId);
-      }
-    } catch {
-      setErrorMessage("Microphone permissions were denied or unavailable.");
-    }
-  }
-
   function onFilePicked(file: File) {
     const hasAudioMime = file.type.startsWith("audio/");
     const hasAudioExtension = AUDIO_EXT_PATTERN.test(file.name);
@@ -347,6 +460,20 @@ export default function App() {
   function onUploadChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (file) onFilePicked(file);
+    event.target.value = "";
+  }
+
+  function openUploadPicker() {
+    uploadInputRef.current?.click();
+  }
+
+  function toggleTheme() {
+    setTheme((prev) => (prev === "dark" ? "light" : "dark"));
+  }
+
+  function handleScaleNotesChange(next: string[]) {
+    setCustomScaleNotes(next);
+    if (scale !== "custom") setScale("custom");
   }
 
   function onDropAudio(event: DragEvent<HTMLDivElement>) {
@@ -362,9 +489,14 @@ export default function App() {
   async function startRecording() {
     setErrorMessage(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: selectedDevice ? { deviceId: { exact: selectedDevice } } : true
-      });
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: selectedDevice ? { deviceId: { exact: selectedDevice } } : true
+        });
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       streamRef.current = stream;
       startMeter(stream);
       const mimeType = pickRecorderMimeType();
@@ -393,8 +525,13 @@ export default function App() {
       recorder.start();
       recorderRef.current = recorder;
       setIsRecording(true);
-    } catch {
+      void refreshAudioDevices();
+    } catch (error) {
       stopMeter();
+      if (error instanceof DOMException && error.name === "NotAllowedError") {
+        setErrorMessage("Microphone access is blocked. Allow mic permissions to record.");
+        return;
+      }
       setErrorMessage("Could not start recording from selected device.");
     }
   }
@@ -456,7 +593,6 @@ export default function App() {
       await loadSessions();
       const defaultPreview = response.midi_files[0] ?? response.audio_files[0] ?? null;
       setSelectedPreview(defaultPreview);
-      setOutputTab("midi");
     } catch (error) {
       const message = error instanceof Error ? error.message : "Processing failed.";
       setErrorMessage(message);
@@ -597,34 +733,43 @@ export default function App() {
 
   const suggestedScaleNotes = SCALE_PRESETS[scale] ?? NOTE_NAMES;
   const previewName = selectedPreview?.name ?? "No preview file selected";
-  const folderFiles = [...midiFiles, ...audioFiles];
   const activeSessionId = activeSession ?? sessionId ?? "";
+  const canGenerate = Boolean(inputFile) && !processing;
 
   return (
-    <main className="app-shell">
+    <main className={`app-shell theme-${theme}`} data-theme={theme}>
+      <input ref={uploadInputRef} type="file" accept="audio/*" className="hidden" onChange={onUploadChange} />
       <div className="app-frame">
         <header className="panel app-header">
-          <div>
+          <div className="brand-wrap">
+            <span className="brand-mark" aria-hidden="true">
+              <IconMic />
+            </span>
             <h1 className="font-display text-2xl font-bold">VINS</h1>
-            <p className="text-xs text-slate-600">Voice Input Notation System</p>
           </div>
-          <div className="header-actions">
-            <button type="button" className="btn btn-secondary" onClick={handleTryDemo}>
-              Try Demo
+          <div className="header-controls">
+            <button
+              type="button"
+              className="btn btn-secondary theme-toggle icon-only"
+              onClick={toggleTheme}
+              aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} mode`}
+              title={`${theme === "dark" ? "Light" : "Dark"} mode`}
+            >
+              <span className="btn-icon">{theme === "dark" ? <IconSun /> : <IconMoon />}</span>
             </button>
-            <span className="step-pill">1 Input</span>
-            <span className="step-pill">2 Prep</span>
-            <span className="step-pill">3 Preview</span>
-            <span className="step-pill">4 Export</span>
           </div>
         </header>
 
-        {errorMessage && <div className="panel app-error">{errorMessage}</div>}
+        {errorMessage && (
+          <div className="panel app-error" role="alert">
+            {errorMessage}
+          </div>
+        )}
 
         <div className="app-grid">
-          <section className="panel step-panel step-input">
+          <section className="panel step-panel step-input frame-fit" data-testid="step-input">
             <div className="step-title-row">
-              <h2 className="font-display text-lg font-semibold">Step 1: Input</h2>
+              <h2 className="font-display text-lg font-semibold">Input</h2>
             </div>
             <div className="field-grid">
               <label className="field-label" htmlFor="device-select">
@@ -646,18 +791,31 @@ export default function App() {
 
             <div className="compact-row">
               {!isRecording ? (
-                <button type="button" className="btn btn-primary" onClick={startRecording}>
-                  Record Mic Input
+                <button type="button" className="btn btn-primary" onClick={startRecording} title="Record from microphone">
+                  <span className="btn-icon">
+                    <IconMic />
+                  </span>
+                  Record
                 </button>
               ) : (
-                <button type="button" className="btn btn-primary btn-danger" onClick={stopRecording}>
-                  Stop Recording
+                <button type="button" className="btn btn-primary btn-danger" onClick={stopRecording} title="Stop recording">
+                  <span className="btn-icon">
+                    <IconMic />
+                  </span>
+                  Stop
                 </button>
               )}
-              <label className="btn btn-secondary cursor-pointer">
-                or Upload
-                <input type="file" accept="audio/*" className="hidden" onChange={onUploadChange} />
-              </label>
+              <button type="button" className="btn btn-secondary" onClick={openUploadPicker} title="Upload an audio file">
+                <span className="btn-icon">
+                  <IconUpload />
+                </span>
+                Upload
+              </button>
+              <button type="button" className="btn btn-secondary icon-only" onClick={handleTryDemo} title="Use demo audio">
+                <span className="btn-icon">
+                  <IconSpark />
+                </span>
+              </button>
             </div>
 
             <div className={`recording-meter ${isRecording ? "is-live" : ""}`}>
@@ -668,36 +826,39 @@ export default function App() {
             </div>
 
             <div
-              className="rounded-2xl border border-dashed border-base-100 p-4 text-center text-sm"
+              className="dropzone"
               onDrop={onDropAudio}
               onDragOver={onDragOver}
             >
+              <span className="dropzone-icon">
+                <IconUpload />
+              </span>
               Drag and drop audio files here
             </div>
 
             <WaveformPreview audioUrl={audioUrl} />
           </section>
 
-          <div className="middle-stack">
-            <section className="panel step-panel step-prep">
-              <div className="step-title-row">
-                <h2 className="font-display text-lg font-semibold">Step 2: Pre-Processing</h2>
-              </div>
+          <section className="panel step-panel step-prep frame-fit" data-testid="step-prep">
+            <div className="step-title-row">
+              <h2 className="font-display text-lg font-semibold">Prep</h2>
+            </div>
 
+            <div className="prep-top-row">
               <div className="mode-grid">
                 <button
                   type="button"
                   className={`btn ${mode === "notes" ? "btn-primary" : "btn-secondary"}`}
                   onClick={() => setMode("notes")}
                 >
-                  Notes (Mono)
+                  Notes
                 </button>
                 <button
                   type="button"
                   className={`btn ${mode === "chords" ? "btn-primary" : "btn-secondary"}`}
                   onClick={() => setMode("chords")}
                 >
-                  Chords (Poly)
+                  Chords
                 </button>
                 <button
                   type="button"
@@ -715,7 +876,7 @@ export default function App() {
                 </button>
               </div>
 
-              <label className="toggle-row">
+              <label className="toggle-row toggle-compact">
                 <span>Auto Pitch &amp; Time</span>
                 <input
                   type="checkbox"
@@ -725,154 +886,174 @@ export default function App() {
                 />
               </label>
 
-              <div className="prep-grid">
-                <div>
-                  <label className="field-label">Root</label>
-                  <select className="input" value={rootNote} onChange={(event) => setRootNote(event.target.value)}>
-                    {NOTE_NAMES.map((note) => (
-                      <option key={note} value={note}>
-                        {note}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="field-label">Scale</label>
-                  <select className="input" value={scale} onChange={(event) => setScale(event.target.value)}>
-                    {Object.keys(SCALE_PRESETS).map((label) => (
-                      <option key={label} value={label}>
-                        {label}
-                      </option>
-                    ))}
-                    <option value="custom">custom</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="field-label">BPM</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={bpm}
-                    min={20}
-                    max={320}
-                    onChange={(event) => setBpm(Number(event.target.value))}
-                  />
-                </div>
-                <div>
-                  <label className="field-label">Time Sig</label>
-                  <input
-                    type="text"
-                    className="input"
-                    value={timeSignature}
-                    onChange={(event) => setTimeSignature(event.target.value)}
-                  />
-                </div>
-              </div>
+              <button
+                type="button"
+                className="btn btn-primary generate-btn"
+                onClick={handleGenerate}
+                disabled={!canGenerate}
+                data-testid="generate-btn"
+                title="Run transcription with current settings"
+              >
+                <span className="btn-icon">
+                  <IconGenerate />
+                </span>
+                Generate MIDI
+              </button>
+            </div>
 
-              <div className="field-grid">
-                <label className="field-label">Mono/Poly</label>
+            <div className="prep-param-strip">
+              <div className="param-field">
+                <label className="field-label">Root</label>
+                <select className="input param-input" value={rootNote} onChange={(event) => setRootNote(event.target.value)}>
+                  {NOTE_NAMES.map((note) => (
+                    <option key={note} value={note}>
+                      {note}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="param-field">
+                <label className="field-label">Scale</label>
+                <select className="input param-input" value={scale} onChange={(event) => setScale(event.target.value)}>
+                  {Object.keys(SCALE_PRESETS).map((label) => (
+                    <option key={label} value={label}>
+                      {label}
+                    </option>
+                  ))}
+                  <option value="custom">custom</option>
+                </select>
+              </div>
+              <div className="param-field">
+                <label className="field-label">BPM</label>
+                <input
+                  type="number"
+                  className="input param-input"
+                  value={bpm}
+                  min={20}
+                  max={320}
+                  onChange={(event) => setBpm(Number(event.target.value))}
+                />
+              </div>
+              <div className="param-field">
+                <label className="field-label">Time Sig</label>
+                <input
+                  type="text"
+                  className="input param-input"
+                  value={timeSignature}
+                  onChange={(event) => setTimeSignature(event.target.value)}
+                />
+              </div>
+              <div className="param-field">
+                <label className="field-label">Voice</label>
                 <select
-                  className="input"
+                  className="input param-input"
                   value={monoPolyOverride}
                   onChange={(event) => setMonoPolyOverride(event.target.value as MonoPolyOverride)}
                 >
-                  <option value="auto">Auto Detect</option>
-                  <option value="mono">Monophonic</option>
-                  <option value="poly">Polyphonic</option>
+                  <option value="auto">Auto</option>
+                  <option value="mono">Mono</option>
+                  <option value="poly">Poly</option>
                 </select>
               </div>
+            </div>
 
-              {scale === "custom" ? (
-                <PianoScalePicker selected={customScaleNotes} onChange={setCustomScaleNotes} />
-              ) : (
-                <div className="scale-note-summary">Scale notes: {suggestedScaleNotes.join(" - ")}</div>
-              )}
+            <PianoScalePicker
+              selected={scale === "custom" ? customScaleNotes : suggestedScaleNotes}
+              onChange={handleScaleNotesChange}
+            />
 
-              <button type="button" className="btn btn-primary generate-btn" onClick={handleGenerate} disabled={processing}>
-                Generate
-              </button>
-            </section>
+            {scale !== "custom" && <div className="scale-note-summary">Preset: {suggestedScaleNotes.join(" - ")}</div>}
+          </section>
 
-            <section className="panel step-panel step-preview">
-              <div className="step-title-row">
-                <h2 className="font-display text-lg font-semibold">Step 3: Processing &amp; Preview</h2>
-              </div>
-              {processing && <LoadingSpinner label="Analyzing and generating MIDI/audio..." />}
-              {!processing && (
-                <>
-                  <div className="preview-current">
-                    <span className="font-semibold">Current preview:</span>
-                    <span className="truncate">{previewName}</span>
+          <section className="panel step-panel step-preview frame-fit" data-testid="step-preview">
+            <div className="step-title-row">
+              <h2 className="font-display text-lg font-semibold">Preview</h2>
+            </div>
+            {processing && <LoadingSpinner label="Analyzing and generating MIDI/audio..." />}
+            {!processing && (
+              <>
+                <div className="preview-layout">
+                  <div className="preview-core">
+                    <div className="preview-current">
+                      <span className="font-semibold">Preview:</span>
+                      <span className="truncate">{previewName}</span>
+                    </div>
+                    <MidiMiniView notes={noteEvents} />
                   </div>
 
-                  <MidiMiniView notes={noteEvents} />
-
-                  <div className="instrument-grid">
-                    <button
-                      type="button"
-                      className={`btn ${instrument === "piano" ? "btn-primary" : "btn-secondary"}`}
-                      onClick={() => setInstrument("piano")}
-                    >
-                      Basic Piano
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${instrument === "synth" ? "btn-primary" : "btn-secondary"}`}
-                      onClick={() => setInstrument("synth")}
-                    >
-                      Synth Pad
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${instrument === "acoustic_drums" ? "btn-primary" : "btn-secondary"}`}
-                      onClick={() => setInstrument("acoustic_drums")}
-                    >
-                      Acoustic Drum Kit
-                    </button>
-                    <button
-                      type="button"
-                      className={`btn ${instrument === "electro_808" ? "btn-primary" : "btn-secondary"}`}
-                      onClick={() => setInstrument("electro_808")}
-                    >
-                      808 Electronic Drum Kit
-                    </button>
-                  </div>
-
-                  <div className="compact-row">
-                    {!isPlaying ? (
-                      <button type="button" className="btn btn-primary" onClick={playPreview}>
-                        Play
+                  <div className="preview-side">
+                    <div className="instrument-grid">
+                      <button
+                        type="button"
+                        className={`btn ${instrument === "piano" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setInstrument("piano")}
+                      >
+                        Piano
                       </button>
-                    ) : (
-                      <button type="button" className="btn btn-secondary" onClick={pausePreview}>
-                        Pause
+                      <button
+                        type="button"
+                        className={`btn ${instrument === "synth" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setInstrument("synth")}
+                      >
+                        Synth
                       </button>
-                    )}
-                    <label className="slider-row">
-                      Volume
-                      <input
-                        type="range"
-                        min="0"
-                        max="1"
-                        step="0.01"
-                        value={volume}
-                        onChange={(event) => setVolume(Number(event.target.value))}
-                      />
-                    </label>
-                    <label className="toggle-inline">
-                      Loop
-                      <input
-                        type="checkbox"
-                        checked={loopEnabled}
-                        onChange={(event) => setLoopEnabled(event.target.checked)}
-                      />
-                    </label>
-                  </div>
+                      <button
+                        type="button"
+                        className={`btn ${instrument === "acoustic_drums" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setInstrument("acoustic_drums")}
+                      >
+                        Drum Kit
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${instrument === "electro_808" ? "btn-primary" : "btn-secondary"}`}
+                        onClick={() => setInstrument("electro_808")}
+                      >
+                        808 Kit
+                      </button>
+                    </div>
 
-                  <div className="track-grid">
-                    {(["notes", "chords", "drums"] as const).map((track) => (
-                      <div key={track} className="track-card">
-                        <div className="font-semibold uppercase">{track}</div>
+                    <div className="compact-row preview-play-row">
+                      {!isPlaying ? (
+                        <button type="button" className="btn btn-primary" onClick={playPreview} title="Play preview">
+                          <span className="btn-icon">
+                            <IconPlay />
+                          </span>
+                          Play
+                        </button>
+                      ) : (
+                        <button type="button" className="btn btn-secondary" onClick={pausePreview}>
+                          Pause
+                        </button>
+                      )}
+                      <label className="slider-row">
+                        Volume
+                        <input
+                          type="range"
+                          min="0"
+                          max="1"
+                          step="0.01"
+                          value={volume}
+                          onChange={(event) => setVolume(Number(event.target.value))}
+                        />
+                      </label>
+                      <label className="toggle-inline">
+                        Loop
+                        <input
+                          type="checkbox"
+                          checked={loopEnabled}
+                          onChange={(event) => setLoopEnabled(event.target.checked)}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="track-grid">
+                  {(["notes", "chords", "drums"] as const).map((track) => (
+                    <div key={track} className="track-card">
+                      <div className="track-name">{track}</div>
+                      <div className="track-toggles">
                         <label className="toggle-inline">
                           <input
                             type="checkbox"
@@ -900,123 +1081,87 @@ export default function App() {
                           Solo
                         </label>
                       </div>
-                    ))}
-                  </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </section>
 
-                  <div className="folder-strip">
-                    {folderFiles.length === 0 && <span className="muted-text">No generated files yet.</span>}
-                    {folderFiles.slice(0, 6).map((file) => (
-                      <div
-                        key={`folder-${file.relative_path}`}
-                        className={`folder-chip ${selectedPreview?.relative_path === file.relative_path ? "is-active" : ""}`}
-                        onDoubleClick={() => onSelectPreview(file)}
-                      >
-                        <button type="button" className="chip-button" onClick={() => onSelectPreview(file)}>
-                          {file.name}
-                        </button>
-                        <span className="chip-tag">{file.kind}</span>
-                      </div>
-                    ))}
-                    {folderFiles.length > 6 && <span className="muted-text">+{folderFiles.length - 6} more files in archive</span>}
-                  </div>
-                </>
-              )}
-            </section>
-          </div>
-
-          <section className="panel step-panel step-output">
+          <section className="panel step-panel step-output frame-fit" data-testid="output-panel">
             <div className="step-title-row">
-              <h2 className="font-display text-lg font-semibold">Step 4: Output &amp; File Management</h2>
+              <h2 className="font-display text-lg font-semibold">Output</h2>
             </div>
 
-            <div className="field-grid">
-              <label className="field-label" htmlFor="session-select">
-                Session
-              </label>
-              <select
-                id="session-select"
-                className="input"
-                value={activeSessionId}
-                onChange={(event) => {
-                  const nextSession = event.target.value;
-                  if (nextSession) void handleSelectSession(nextSession);
-                }}
-              >
-                {!activeSessionId && <option value="">No active session</option>}
-                {sessions.map((session) => (
-                  <option key={session.session_id} value={session.session_id}>
-                    {session.session_id} ({session.run_count} runs)
-                  </option>
-                ))}
-              </select>
+            <div className="output-header-row">
+              <div className="field-grid session-field-grid">
+                <label className="field-label" htmlFor="session-select">
+                  Session
+                </label>
+                <select
+                  id="session-select"
+                  className="input"
+                  value={activeSessionId}
+                  onChange={(event) => {
+                    const nextSession = event.target.value;
+                    if (nextSession) void handleSelectSession(nextSession);
+                  }}
+                  data-testid="session-select"
+                >
+                  {!activeSessionId && <option value="">Select session</option>}
+                  {sessions.map((session) => (
+                    <option key={session.session_id} value={session.session_id}>
+                      {session.session_id} ({session.run_count} runs)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {sessionId && (
+                <a className="btn btn-primary icon-label-btn" href={zipUrl(sessionId)} download title="Download ZIP">
+                  <span className="btn-icon">
+                    <IconDownload />
+                  </span>
+                  ZIP
+                </a>
+              )}
             </div>
 
-            <div className="output-tab-row">
-              <button
-                type="button"
-                className={`btn ${outputTab === "midi" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setOutputTab("midi")}
-              >
-                MIDI
-              </button>
-              <button
-                type="button"
-                className={`btn ${outputTab === "audio" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setOutputTab("audio")}
-              >
-                Audio
-              </button>
-              <button
-                type="button"
-                className={`btn ${outputTab === "sessions" ? "btn-primary" : "btn-secondary"}`}
-                onClick={() => setOutputTab("sessions")}
-              >
-                Sessions
-              </button>
-            </div>
-
-            {outputTab !== "sessions" && (
+            <div className="output-lists">
               <FileTable
-                title={outputTab === "midi" ? "MIDI Files" : "Audio Files"}
-                files={outputTab === "midi" ? midiFiles : audioFiles}
+                title="MIDI Tracks"
+                files={midiFiles}
                 selectedPath={selectedPreview?.relative_path ?? null}
                 onSelect={onSelectPreview}
                 onRename={onRename}
               />
-            )}
+              <FileTable
+                title="Audio Tracks"
+                files={audioFiles}
+                selectedPath={selectedPreview?.relative_path ?? null}
+                onSelect={onSelectPreview}
+                onRename={onRename}
+              />
+            </div>
 
-            {outputTab === "sessions" && (
-              <div className="session-list">
-                {sessions.length === 0 && <div className="muted-text">No sessions saved yet.</div>}
-                {sessions.slice(0, 7).map((session) => (
-                  <button
-                    key={session.session_id}
-                    type="button"
-                    className={`session-item ${activeSession === session.session_id ? "is-active" : ""}`}
-                    onClick={() => handleSelectSession(session.session_id)}
-                  >
-                    <span className="session-id">{session.session_id}</span>
-                    <span className="session-meta">
-                      {session.run_count} runs - {session.source_file}
-                    </span>
-                  </button>
-                ))}
-                {sessions.length > 7 && <div className="muted-text">+{sessions.length - 7} more sessions</div>}
-              </div>
-            )}
-
-            <div className="zip-row">
-              {sessionId ? (
-                <a className="btn btn-primary" href={zipUrl(sessionId)} download>
-                  Download ZIP
-                </a>
-              ) : (
-                <span className="muted-text">Generate once to enable ZIP export.</span>
-              )}
+            <div className="session-list scroll-region session-compact-list">
+              {sessions.length === 0 && <div className="muted-text">No saved sessions yet.</div>}
+              {sessions.map((session) => (
+                <button
+                  key={session.session_id}
+                  type="button"
+                  className={`session-item ${activeSession === session.session_id ? "is-active" : ""}`}
+                  onClick={() => handleSelectSession(session.session_id)}
+                >
+                  <span className="session-id">{session.session_id}</span>
+                  <span className="session-meta">{session.run_count} runs</span>
+                </button>
+              ))}
             </div>
           </section>
         </div>
       </div>
+
     </main>
   );
 }
+

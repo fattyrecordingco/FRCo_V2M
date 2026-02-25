@@ -9,15 +9,22 @@ interface Props {
   onRename: (file: FileEntry) => void;
 }
 
-export default function FileTable({ title, files, selectedPath, onSelect, onRename }: Props) {
-  const visibleFiles = files.slice(0, 6);
-
+function IconDownload() {
   return (
-    <div className="space-y-2">
-      <div className="text-xs font-semibold">{title}</div>
-      <div className="file-table-shell">
-        {files.length === 0 && <div className="p-2 text-xs text-slate-500">No files yet.</div>}
-        {visibleFiles.map((file) => {
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M12 3a1 1 0 0 1 1 1v8.58l2.3-2.29a1 1 0 1 1 1.4 1.42l-4 3.97a1 1 0 0 1-1.4 0l-4-3.97a1 1 0 1 1 1.4-1.42L11 12.58V4a1 1 0 0 1 1-1Z" />
+      <path d="M5 15a1 1 0 0 1 1 1v3h12v-3a1 1 0 1 1 2 0v4a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-4a1 1 0 0 1 1-1Z" />
+    </svg>
+  );
+}
+
+export default function FileTable({ title, files, selectedPath, onSelect, onRename }: Props) {
+  return (
+    <div className="file-section">
+      <div className="file-section-title">{title}</div>
+      <div className="file-table-shell scroll-region">
+        {files.length === 0 && <div className="file-empty">No files yet.</div>}
+        {files.map((file) => {
           const selected = selectedPath === file.relative_path;
           const absoluteUrl = fileUrl(file.url);
           return (
@@ -29,25 +36,20 @@ export default function FileTable({ title, files, selectedPath, onSelect, onRena
                 event.dataTransfer.setData("text/uri-list", absoluteUrl);
                 event.dataTransfer.setData("DownloadURL", `${file.mime_type}:${file.name}:${absoluteUrl}`);
               }}
-              onDoubleClick={() => onSelect(file)}
+              onDoubleClick={() => onRename(file)}
             >
-              <button type="button" className="min-w-0 flex-1 truncate text-left font-medium" onClick={() => onSelect(file)}>
+              <button type="button" className="file-name-btn" onClick={() => onSelect(file)}>
                 {file.name}
               </button>
               <span className="run-badge">{file.run_id}</span>
-              <a className="btn btn-secondary table-btn" href={absoluteUrl} download>
-                Download
+              <a className="btn btn-secondary table-btn icon-only" href={absoluteUrl} download title="Download file">
+                <span className="btn-icon">
+                  <IconDownload />
+                </span>
               </a>
-              <button type="button" className="btn btn-secondary table-btn" onClick={() => onRename(file)}>
-                Rename
-              </button>
-              <span className={`sel-indicator ${selected ? "is-visible" : ""}`}>Selected</span>
             </div>
           );
         })}
-        {files.length > visibleFiles.length && (
-          <div className="p-2 text-[11px] text-slate-500">+{files.length - visibleFiles.length} more files in archive</div>
-        )}
       </div>
     </div>
   );
