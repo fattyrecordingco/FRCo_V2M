@@ -972,7 +972,7 @@ export default function App() {
             </div>
             {processing && <LoadingSpinner label="Analyzing and generating MIDI/audio..." />}
             {!processing && (
-              <>
+              <div className="preview-body">
                 <div className="preview-layout">
                   <div className="preview-core">
                     <div className="preview-current">
@@ -1085,7 +1085,7 @@ export default function App() {
                     </div>
                   ))}
                 </div>
-              </>
+              </div>
             )}
           </section>
 
