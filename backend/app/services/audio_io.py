@@ -42,8 +42,7 @@ def load_audio_from_bytes(raw_bytes: bytes, sample_rate: int) -> tuple[np.ndarra
                 raise ValueError(msg) from exc
         finally:
             Path(tmp_path).unlink(missing_ok=True)
-    if data.ndim > 1:
-        data = np.mean(data, axis=1)
+    data = _to_mono(np.asarray(data))
     data = data.astype(np.float32)
     if src_sr != sample_rate:
         data = librosa.resample(y=data, orig_sr=src_sr, target_sr=sample_rate)
@@ -51,6 +50,19 @@ def load_audio_from_bytes(raw_bytes: bytes, sample_rate: int) -> tuple[np.ndarra
     if data.size == 0:
         raise ValueError("Audio file is empty.")
     return data, src_sr
+
+
+def _to_mono(data: np.ndarray) -> np.ndarray:
+    if data.ndim <= 1:
+        return data
+    if data.shape[0] <= 8 and data.shape[1] > data.shape[0]:
+        # librosa mono=False returns channels-first: (channels, samples)
+        return np.mean(data, axis=0)
+    if data.shape[1] <= 8 and data.shape[0] > data.shape[1]:
+        # soundfile returns channels-last: (samples, channels)
+        return np.mean(data, axis=1)
+    # fallback for ambiguous layouts
+    return np.mean(data, axis=-1)
 
 
 def save_wav(path: Path, audio: np.ndarray, sample_rate: int) -> None:

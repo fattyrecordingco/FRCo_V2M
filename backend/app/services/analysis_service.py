@@ -7,7 +7,7 @@ from typing import Any
 
 import librosa
 import numpy as np
-from scipy.signal import medfilt
+from scipy.signal import butter, find_peaks, medfilt, sosfiltfilt
 
 from app.core.constants import DRUM_MIDI_MAP, NOTE_NAMES, SCALE_INTERVALS
 
@@ -37,6 +37,12 @@ DRUM_PROTOTYPES: dict[str, np.ndarray] = {
     "crash": np.array([0.08, 0.25, 0.67, 0.90, 0.88, 0.70, 0.45]),
 }
 
+MIN_VOICE_HZ = float(librosa.note_to_hz("A0"))
+MAX_VOICE_HZ = float(librosa.note_to_hz("C8"))
+MIN_MIDI_NOTE = 21
+MAX_MIDI_NOTE = 120
+MAX_HARMONIC_ORDER = 6
+
 
 @dataclass(slots=True)
 class AnalysisSummary:
@@ -50,27 +56,44 @@ class AnalysisSummary:
 
 
 def enhance_for_analysis(audio: np.ndarray, sr: int) -> tuple[np.ndarray, dict[str, float]]:
-    """Apply gentle denoise + gain normalization for more stable transcription."""
+    """Apply denoise + adaptive gain normalization for stable low-volume voice transcription."""
     if audio.size == 0:
-        return audio, {"gain": 1.0, "noise_floor": 0.0, "peak": 0.0}
+        return audio, {"gain": 1.0, "noise_floor": 0.0, "peak": 0.0, "snr_db": 0.0}
 
     working = np.nan_to_num(audio.astype(np.float32), nan=0.0, posinf=0.0, neginf=0.0)
     working = working - float(np.mean(working))
 
+    if sr > 8000:
+        low_hz = max(30.0, MIN_VOICE_HZ * 0.55)
+        high_hz = min(float(sr) * 0.48, 5200.0)
+        if low_hz < high_hz:
+            sos = butter(2, [low_hz, high_hz], btype="bandpass", fs=sr, output="sos")
+            working = sosfiltfilt(sos, working).astype(np.float32)
+
     noise_floor = float(np.percentile(np.abs(working), 20))
-    gate = max(noise_floor * 1.9, 1.5e-4)
+    gate = max(noise_floor * 1.5, 1.2e-4)
     gated = np.sign(working) * np.maximum(np.abs(working) - gate, 0.0)
 
-    stft = librosa.stft(gated, n_fft=1024, hop_length=256)
+    n_fft = 2048 if len(gated) >= 4096 else 1024
+    stft = librosa.stft(gated, n_fft=n_fft, hop_length=256)
     mag, phase = np.abs(stft), np.exp(1j * np.angle(stft))
-    noise_profile = np.percentile(mag, 18, axis=1, keepdims=True)
-    mag_clean = np.maximum(mag - noise_profile * 0.72, 0.0)
-    cleaned = librosa.istft(mag_clean * phase, hop_length=256, length=len(gated))
-    working = (0.7 * cleaned + 0.3 * gated).astype(np.float32)
+    frame_rms = librosa.feature.rms(y=gated, frame_length=n_fft, hop_length=256).flatten()
+    if frame_rms.size and frame_rms.size == mag.shape[1]:
+        quiet_mask = frame_rms <= float(np.percentile(frame_rms, 35))
+        if np.any(quiet_mask):
+            noise_profile = np.percentile(mag[:, quiet_mask], 65, axis=1, keepdims=True)
+        else:
+            noise_profile = np.percentile(mag, 18, axis=1, keepdims=True)
+    else:
+        noise_profile = np.percentile(mag, 18, axis=1, keepdims=True)
+    mag_floor = mag * 0.05
+    mag_clean = np.maximum(mag - noise_profile * 0.82, mag_floor)
+    cleaned = librosa.istft(mag_clean * phase, hop_length=256, length=len(gated)).astype(np.float32)
+    working = (0.76 * cleaned + 0.24 * gated).astype(np.float32)
 
     rms = float(np.sqrt(np.mean(working * working)) + 1e-9)
-    target_rms = 0.12
-    gain = float(np.clip(target_rms / rms, 1.0, 6.0))
+    target_rms = 0.16 if rms < 0.055 else 0.12
+    gain = float(np.clip(target_rms / rms, 1.0, 9.0))
     working = working * gain
 
     peak = float(np.max(np.abs(working)) + 1e-9)
@@ -78,7 +101,10 @@ def enhance_for_analysis(audio: np.ndarray, sr: int) -> tuple[np.ndarray, dict[s
         working = working * (0.96 / peak)
         peak = float(np.max(np.abs(working)) + 1e-9)
 
-    return working.astype(np.float32), {"gain": gain, "noise_floor": noise_floor, "peak": peak}
+    signal_power = float(np.mean(working * working))
+    noise_power = max(noise_floor * noise_floor, 1e-12)
+    snr_db = float(10.0 * np.log10(max(signal_power - noise_power, 1e-12) / noise_power))
+    return working.astype(np.float32), {"gain": gain, "noise_floor": noise_floor, "peak": peak, "snr_db": snr_db}
 
 
 def detect_tempo_and_time_signature(audio: np.ndarray, sr: int) -> tuple[float, str]:
@@ -182,6 +208,7 @@ def extract_monophonic_notes(audio: np.ndarray, sr: int, hop_length: int = 256) 
         return []
 
     f0, voiced, voiced_probs = _estimate_pitch(audio, sr, hop_length)
+    f0 = _refine_pitch_track_hps(f0, audio, sr, hop_length)
     times = librosa.times_like(f0, sr=sr, hop_length=hop_length)
     midi_values = np.where(np.isfinite(f0), librosa.hz_to_midi(f0), np.nan)
     valid_idx = np.where(np.isfinite(midi_values))[0]
@@ -202,8 +229,11 @@ def extract_monophonic_notes(audio: np.ndarray, sr: int, hop_length: int = 256) 
         units="frames",
         backtrack=True,
     )
-    pitch_jump_frames = np.where(np.abs(np.diff(np.nan_to_num(midi_values, nan=0.0))) >= 1.7)[0] + 1
-    boundaries = np.unique(np.concatenate(([0], onset_frames, pitch_jump_frames, [len(times) - 1]))).astype(int)
+    pitch_jump_frames = np.where(np.abs(np.diff(np.nan_to_num(midi_values, nan=0.0))) >= 1.45)[0] + 1
+    voiced_edge_frames = np.where(np.diff(voiced.astype(np.int8)) != 0)[0] + 1
+    boundaries = np.unique(
+        np.concatenate(([0], onset_frames, pitch_jump_frames, voiced_edge_frames, [len(times) - 1]))
+    ).astype(int)
     boundaries = boundaries[(boundaries >= 0) & (boundaries < len(times))]
     if boundaries.size < 2:
         boundaries = np.array([0, len(times) - 1], dtype=int)
@@ -215,7 +245,8 @@ def extract_monophonic_notes(audio: np.ndarray, sr: int, hop_length: int = 256) 
         if end_idx <= start_idx:
             continue
         seg_voiced_ratio = float(np.mean(voiced[start_idx:end_idx]))
-        if seg_voiced_ratio < 0.42:
+        seg_voiced_prob = float(np.mean(voiced_probs[start_idx:end_idx])) if voiced_probs.size else 0.0
+        if seg_voiced_ratio < 0.30 and seg_voiced_prob < 0.36:
             continue
         segment = midi_values[start_idx:end_idx]
         valid = segment[np.isfinite(segment)]
@@ -232,30 +263,74 @@ def _estimate_pitch(audio: np.ndarray, sr: int, hop_length: int) -> tuple[np.nda
     try:
         f0, voiced_flag, voiced_prob = librosa.pyin(
             audio,
-            fmin=librosa.note_to_hz("C2"),
-            fmax=librosa.note_to_hz("C7"),
+            fmin=MIN_VOICE_HZ,
+            fmax=MAX_VOICE_HZ,
             sr=sr,
             hop_length=hop_length,
-            frame_length=2048,
+            frame_length=4096,
         )
         f0 = np.asarray(f0, dtype=float)
         voiced_flag = np.asarray(voiced_flag, dtype=bool)
         voiced_prob = np.asarray(voiced_prob, dtype=float)
-        voiced = voiced_flag & (voiced_prob > 0.56)
+        voiced = voiced_flag & (voiced_prob > 0.48)
         f0 = np.where(voiced, f0, np.nan)
+        if np.sum(np.isfinite(f0)) < 3:
+            raise ValueError("pyin could not find stable voiced frames")
         return f0, voiced, voiced_prob
     except Exception:
         f0 = librosa.yin(
             audio,
-            fmin=librosa.note_to_hz("C2"),
-            fmax=librosa.note_to_hz("C7"),
+            fmin=MIN_VOICE_HZ,
+            fmax=MAX_VOICE_HZ,
             sr=sr,
             hop_length=hop_length,
-            trough_threshold=0.1,
+            trough_threshold=0.14,
         )
         voiced = np.isfinite(f0)
-        probs = np.where(voiced, 0.75, 0.0)
+        probs = np.where(voiced, 0.68, 0.0)
         return f0, voiced, probs
+
+
+def _refine_pitch_track_hps(f0: np.ndarray, audio: np.ndarray, sr: int, hop_length: int) -> np.ndarray:
+    """Refine frame-level F0 with harmonic product scoring from FFT bins."""
+    if f0.size == 0 or audio.size == 0:
+        return f0
+
+    n_fft = 4096 if sr >= 32000 else 2048
+    spectrum = np.abs(librosa.stft(audio, n_fft=n_fft, hop_length=hop_length, window="hann"))
+    if spectrum.size == 0:
+        return f0
+    freqs = librosa.fft_frequencies(sr=sr, n_fft=n_fft)
+    refined = np.array(f0, copy=True, dtype=float)
+
+    frame_count = min(refined.size, spectrum.shape[1])
+    for frame_idx in range(frame_count):
+        base_hz = float(refined[frame_idx])
+        if not np.isfinite(base_hz) or base_hz <= 0:
+            continue
+        mag = spectrum[:, frame_idx]
+        if float(np.max(mag)) < 1e-7:
+            continue
+        lo = max(MIN_VOICE_HZ, base_hz * 0.68)
+        hi = min(MAX_VOICE_HZ, base_hz * 1.38)
+        candidate_bins = np.where((freqs >= lo) & (freqs <= hi))[0]
+        if candidate_bins.size == 0:
+            continue
+
+        scores = np.zeros(candidate_bins.size, dtype=np.float64)
+        for order in range(1, MAX_HARMONIC_ORDER + 1):
+            harmonic_bins = np.clip(candidate_bins * order, 1, mag.size - 2)
+            harmonic_mag = np.maximum.reduce((mag[harmonic_bins - 1], mag[harmonic_bins], mag[harmonic_bins + 1]))
+            scores += harmonic_mag / (order**1.12)
+
+        best_idx = int(np.argmax(scores))
+        best_hz = float(freqs[candidate_bins[best_idx]])
+        base_midi = float(librosa.hz_to_midi(base_hz))
+        best_midi = float(librosa.hz_to_midi(best_hz))
+        if abs(best_midi - base_midi) > 3.6:
+            continue
+        refined[frame_idx] = 0.45 * base_hz + 0.55 * best_hz
+    return refined
 
 
 def _flush_note(
@@ -270,7 +345,7 @@ def _flush_note(
         return []
     start = float(times[start_idx])
     end = float(times[end_idx])
-    if end - start < 0.05:
+    if end - start < 0.04:
         return []
 
     base_vel = float(np.mean(rms[start_idx:end_idx]) * 230.0)
@@ -278,7 +353,7 @@ def _flush_note(
     velocity = int(np.clip(base_vel + attack_boost + 20, 30, 122))
     return [
         {
-            "pitch": int(np.clip(midi_pitch, 24, 108)),
+            "pitch": int(np.clip(midi_pitch, MIN_MIDI_NOTE, MAX_MIDI_NOTE)),
             "start": start,
             "end": end,
             "velocity": velocity,
@@ -314,6 +389,8 @@ def detect_chords(audio: np.ndarray, sr: int) -> list[dict[str, Any]]:
         segment_edges = np.append(segment_edges, len(audio) / sr)
 
     raw_chords: list[dict[str, Any]] = []
+    rms = float(np.sqrt(np.mean(audio * audio)) + 1e-9)
+    score_threshold = 0.16 if rms < 0.055 else 0.22
     for idx in range(len(segment_edges) - 1):
         start = float(segment_edges[idx])
         end = float(segment_edges[idx + 1])
@@ -324,7 +401,7 @@ def detect_chords(audio: np.ndarray, sr: int) -> list[dict[str, Any]]:
             continue
         seg = chroma[:, mask].mean(axis=1)
         root_idx, quality, score = _classify_chord(seg)
-        if score < 0.22:
+        if score < score_threshold:
             continue
         root_name = NOTE_NAMES[root_idx]
         pitches = [60 + ((root_idx + interval) % 12) for interval in CHORD_TEMPLATES[quality][:4]]
@@ -345,6 +422,10 @@ def detect_chords(audio: np.ndarray, sr: int) -> list[dict[str, Any]]:
     if chords:
         return chords
 
+    harmonic_guess = _infer_chord_from_harmonics(audio, sr)
+    if harmonic_guess is not None:
+        return [harmonic_guess]
+
     beat_len = 60.0 / tempo if tempo > 0 else 0.5
     return [
         {
@@ -359,6 +440,85 @@ def detect_chords(audio: np.ndarray, sr: int) -> list[dict[str, Any]]:
             "track": "chords",
         }
     ]
+
+
+def _infer_chord_from_harmonics(audio: np.ndarray, sr: int) -> dict[str, Any] | None:
+    if audio.size < 256:
+        return None
+    n_fft = int(2 ** np.ceil(np.log2(min(max(audio.size, 2048), 16384))))
+    windowed = audio[: min(audio.size, n_fft)] * np.hanning(min(audio.size, n_fft))
+    spectrum = np.abs(np.fft.rfft(windowed, n=n_fft))
+    freqs = np.fft.rfftfreq(n_fft, d=1.0 / sr)
+    mask = (freqs >= MIN_VOICE_HZ) & (freqs <= 2000.0)
+    if not np.any(mask):
+        return None
+    band_freqs = freqs[mask]
+    band_mag = spectrum[mask]
+    if band_mag.size < 8:
+        return None
+
+    peak_floor = max(float(np.percentile(band_mag, 65) * 1.35), 1e-9)
+    peaks, props = find_peaks(band_mag, height=peak_floor, distance=4)
+    if peaks.size == 0:
+        return None
+    peak_heights = np.asarray(props.get("peak_heights", np.zeros(peaks.size)), dtype=float)
+    best_freq = None
+    best_score = -1.0
+    for idx, peak in enumerate(peaks):
+        freq = float(band_freqs[int(peak)])
+        score = float(peak_heights[idx] if idx < peak_heights.size else band_mag[int(peak)])
+        for order in range(2, MAX_HARMONIC_ORDER + 1):
+            harmonic_freq = freq * order
+            if harmonic_freq > band_freqs[-1]:
+                break
+            harmonic_idx = int(np.argmin(np.abs(band_freqs - harmonic_freq)))
+            score += float(band_mag[harmonic_idx]) / (order**1.1)
+        if score > best_score:
+            best_score = score
+            best_freq = freq
+    if best_freq is None or best_freq <= 0:
+        return None
+
+    root_midi = int(round(float(librosa.hz_to_midi(best_freq))))
+    root_idx = root_midi % 12
+    harmonic_pcs: set[int] = set()
+    for peak in peaks:
+        hz = float(band_freqs[int(peak)])
+        if hz <= 0:
+            continue
+        midi = float(librosa.hz_to_midi(hz))
+        if np.isfinite(midi):
+            harmonic_pcs.add(int(round(midi)) % 12)
+    if not harmonic_pcs:
+        return None
+    intervals = {(pc - root_idx) % 12 for pc in harmonic_pcs}
+    if 3 in intervals and 7 in intervals:
+        quality = "min"
+    elif 4 in intervals and 7 in intervals:
+        quality = "maj"
+    elif 3 in intervals and 10 in intervals:
+        quality = "min7"
+    elif 4 in intervals and 10 in intervals:
+        quality = "dom7"
+    elif 5 in intervals and 7 in intervals:
+        quality = "sus4"
+    else:
+        quality = "maj"
+
+    duration = max(len(audio) / sr, 0.5)
+    peak_norm = float(best_score / (np.max(band_mag) + 1e-9))
+    confidence = float(np.clip(0.3 + peak_norm * 0.45, 0.2, 0.9))
+    return {
+        "start": 0.0,
+        "end": float(duration),
+        "root": NOTE_NAMES[root_idx],
+        "quality": quality,
+        "label": f"{NOTE_NAMES[root_idx]}{quality}",
+        "pitches": [60 + ((root_idx + interval) % 12) for interval in CHORD_TEMPLATES[quality][:4]],
+        "confidence": confidence,
+        "velocity": 80,
+        "track": "chords",
+    }
 
 
 def _classify_chord(chroma: np.ndarray) -> tuple[int, str, float]:
