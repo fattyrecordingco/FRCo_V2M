@@ -33,3 +33,4 @@ coverage/
 # Generated data
 projects/
 *.zip
+!installers/**/*.zip
