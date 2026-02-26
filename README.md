@@ -4,7 +4,16 @@ VINS is a local-first voice/audio-to-MIDI desktop app with a React/Tauri desktop
 
 ## 1) Download Latest Installer
 
-Use the latest release assets here:
+Use either of these paths:
+- In-repo installer folder: `installers/`
+- GitHub release assets: https://github.com/fattyrecordingco/FRCo_V2M/releases/latest
+
+Direct in-repo file locations:
+- Windows installer: `installers/windows/VINS_0.1.4_x64_en-US.msi`
+- macOS installer (Apple Silicon): `installers/macos/VINS_0.1.4_aarch64.dmg`
+- macOS app archive: `installers/macos/VINS.app.zip`
+
+Release pages:
 - Latest release page: https://github.com/fattyrecordingco/FRCo_V2M/releases/latest
 - All releases: https://github.com/fattyrecordingco/FRCo_V2M/releases
 
