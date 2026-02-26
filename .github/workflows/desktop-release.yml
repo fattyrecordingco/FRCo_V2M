@@ -148,10 +148,18 @@ jobs:
           name: vins-macos-bundles
           path: release-assets/macos
 
+      - name: List release assets to publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Windows files:"
+          find release-assets/windows -type f -maxdepth 5 | sort || true
+          echo "macOS files:"
+          find release-assets/macos -type f -maxdepth 8 | sort || true
+
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
           files: |
             release-assets/windows/**/*.msi
-            release-assets/macos/**/*.dmg
-            release-assets/macos/**/*.zip
+            release-assets/macos/**/*
