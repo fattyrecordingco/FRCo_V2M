@@ -41,13 +41,8 @@ jobs:
     name: Build macOS App + DMG
     runs-on: macos-14
     env:
-      APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      HAS_APPLE_CERT: ${{ secrets.APPLE_CERTIFICATE_BASE64 != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' }}
+      HAS_APPLE_NOTARY: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
 
     steps:
       - uses: actions/checkout@v4
@@ -63,7 +58,11 @@ jobs:
         run: npm ci
 
       - name: Import Apple certificate
-        if: ${{ env.APPLE_CERTIFICATE_BASE64 != '' && env.APPLE_CERTIFICATE_PASSWORD != '' }}
+        if: ${{ env.HAS_APPLE_CERT == 'true' && env.HAS_APPLE_NOTARY == 'true' }}
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
           CERT_PATH="$RUNNER_TEMP/apple_certificate.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
@@ -77,10 +76,22 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security find-identity -v "$KEYCHAIN_PATH"
 
-      - name: Build signed/notarized macOS bundles
+      - name: Build unsigned macOS bundles
+        if: ${{ env.HAS_APPLE_NOTARY != 'true' }}
         working-directory: frontend
         env:
           CI: "true"
+        run: npx tauri build --bundles app,dmg
+
+      - name: Build signed/notarized macOS bundles
+        if: ${{ env.HAS_APPLE_NOTARY == 'true' }}
+        working-directory: frontend
+        env:
+          CI: "true"
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: npx tauri build --bundles app,dmg
 
       - name: Zip .app bundle for download
@@ -95,7 +106,7 @@ jobs:
           done
 
       - name: Staple and verify notarization
-        if: ${{ env.APPLE_ID != '' && env.APPLE_PASSWORD != '' && env.APPLE_TEAM_ID != '' }}
+        if: ${{ env.HAS_APPLE_NOTARY == 'true' }}
         shell: bash
         run: |
           set -euo pipefail
