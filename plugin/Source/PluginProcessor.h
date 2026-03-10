@@ -32,6 +32,15 @@ public:
     void setStateInformation(const void* data, int sizeInBytes) override;
 
 private:
-    juce::AudioProcessorValueTreeState parameters;
-};
+    void emitVoiceControllerMidi(const juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages);
+    float estimateEnvelope(const juce::AudioBuffer<float>& buffer) const;
+    float estimateBrightness(const juce::AudioBuffer<float>& buffer) const;
+    float estimateFrequency(const juce::AudioBuffer<float>& buffer) const;
 
+    juce::AudioProcessorValueTreeState parameters;
+    double currentSampleRate = 44100.0;
+    bool gateOpen = false;
+    int lastMidiNote = -1;
+    int lastExpression = -1;
+    int lastBrightness = -1;
+};

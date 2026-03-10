@@ -105,15 +105,18 @@ class ProjectManager:
             )
         return sessions
 
-    def list_files(self, session_id: str) -> dict[str, list[FileEntry]]:
+    def list_files(self, session_id: str, run_id: str | None = None) -> dict[str, list[FileEntry]]:
         session_path = self.root / sanitize_filename(session_id)
         if not session_path.exists():
             msg = f"Unknown session: {session_id}"
             raise FileNotFoundError(msg)
         midi_files: list[FileEntry] = []
         audio_files: list[FileEntry] = []
-        for run_path in sorted((session_path / "runs").glob("run_*")):
-            run_id = run_path.name
+        run_paths = sorted((session_path / "runs").glob("run_*"))
+        if run_id:
+            run_paths = [path for path in run_paths if path.name == sanitize_filename(run_id)]
+        for run_path in run_paths:
+            current_run_id = run_path.name
             for midi_file in sorted((run_path / "midi").glob("*.mid")):
                 rel = str(midi_file.relative_to(session_path)).replace("\\", "/")
                 midi_files.append(
@@ -122,7 +125,7 @@ class ProjectManager:
                         relative_path=rel,
                         kind="midi",
                         mime_type="audio/midi",
-                        run_id=run_id,
+                        run_id=current_run_id,
                         url=f"/api/v1/files/{session_id}/{rel}",
                     )
                 )
@@ -137,7 +140,7 @@ class ProjectManager:
                         relative_path=rel,
                         kind="audio",
                         mime_type=mime,
-                        run_id=run_id,
+                        run_id=current_run_id,
                         url=f"/api/v1/files/{session_id}/{rel}",
                     )
                 )
@@ -145,18 +148,24 @@ class ProjectManager:
 
     def rename_file(self, session_id: str, relative_path: str, new_name: str) -> FileEntry:
         session_path = self.root / sanitize_filename(session_id)
-        source = session_path / Path(relative_path)
-        if not source.exists() or not source.is_file():
+        source = self.resolve_file_path(session_id, relative_path)
+        if not source.is_file():
             msg = "File not found for rename."
             raise FileNotFoundError(msg)
         sanitized_name = sanitize_filename(new_name)
+        if not Path(sanitized_name).suffix:
+            sanitized_name = f"{sanitized_name}{source.suffix.lower()}"
         target = source.with_name(sanitized_name)
+        if session_path.resolve() not in target.resolve().parents:
+            msg = "Invalid rename target."
+            raise ValueError(msg)
         if target.exists() and source.resolve() != target.resolve():
-            target.unlink()
+            msg = "A file with that name already exists."
+            raise ValueError(msg)
         source.rename(target)
         rel = str(target.relative_to(session_path)).replace("\\", "/")
         kind = "midi" if target.suffix.lower() == ".mid" else "audio"
-        mime = "audio/midi" if kind == "midi" else "audio/wav"
+        mime = "audio/midi" if kind == "midi" else ("audio/mpeg" if target.suffix.lower() == ".mp3" else "audio/wav")
         return FileEntry(
             name=target.name,
             relative_path=rel,
@@ -213,6 +222,30 @@ class ProjectManager:
         if session_path.exists():
             shutil.rmtree(session_path)
 
+    def read_latest_run(self, session_id: str) -> dict[str, Any]:
+        session_path = self.root / sanitize_filename(session_id)
+        if not session_path.exists():
+            msg = f"Unknown session: {session_id}"
+            raise FileNotFoundError(msg)
+        run_paths = sorted((session_path / "runs").glob("run_*"))
+        if not run_paths:
+            msg = f"Session {session_id} has no runs."
+            raise FileNotFoundError(msg)
+        latest_run = run_paths[-1]
+        metadata_path = latest_run / "metadata.json"
+        if not metadata_path.exists():
+            msg = f"Session {session_id} latest run is missing metadata."
+            raise FileNotFoundError(msg)
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        files = self.list_files(session_id, run_id=latest_run.name)
+        return {
+            "session_id": session_id,
+            "run_id": latest_run.name,
+            "metadata": metadata,
+            "midi_files": [item.model_dump() for item in files["midi"]],
+            "audio_files": [item.model_dump() for item in files["audio"]],
+        }
+
     @staticmethod
     def _next_run_id(session_path: Path) -> str:
         run_numbers = []
@@ -224,4 +257,3 @@ class ProjectManager:
                 run_numbers.append(int(suffix))
         next_num = max(run_numbers, default=0) + 1
         return f"run_{next_num:03d}"
-

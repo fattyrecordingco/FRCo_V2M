@@ -40,6 +40,7 @@ async function runViewportChecks(page, viewport) {
   await page.setViewportSize(viewport);
   await page.goto(URL, { waitUntil: "domcontentloaded" });
   await page.waitForSelector("[data-testid='step-prep']");
+  await page.evaluate(() => window.scrollTo(0, 0));
 
   await assertVisibleInViewport(page, "[data-testid='generate-btn']", viewport, "generate button");
   await assertVisibleInViewport(page, "[data-testid='session-select']", viewport, "session select");
@@ -55,10 +56,17 @@ async function runViewportChecks(page, viewport) {
     throw new Error(`Step 2 and Step 3 overlap at ${viewport.width}x${viewport.height}`);
   }
 
+  const manualToggle = page.locator(".engine-banner input[type='checkbox']");
+  if ((await page.locator("[data-testid='piano-picker']").count()) === 0) {
+    await manualToggle.check();
+    await page.evaluate(() => window.scrollTo(0, 0));
+  }
+
   const piano = await page.locator("[data-testid='piano-picker']").boundingBox();
   if (!piano || piano.width < 100 || piano.height < 50) {
     throw new Error(`Piano picker failed to render at ${viewport.width}x${viewport.height}`);
   }
+  const prepAfterToggle = await page.locator("[data-testid='step-prep']").boundingBox();
   const pianoRatio = await page.$eval("[data-testid='piano-picker']", (element) => {
     const styles = getComputedStyle(element);
     const width = Number.parseFloat(styles.width);
@@ -68,12 +76,17 @@ async function runViewportChecks(page, viewport) {
   if (pianoRatio > 5.3 || pianoRatio < 3.0) {
     throw new Error(`Piano proportions regressed at ${viewport.width}x${viewport.height} (${pianoRatio.toFixed(2)})`);
   }
-  if (step2 && piano.y + piano.height > step2.y + step2.height + 10) {
-    const overflow = Math.round(piano.y + piano.height - (step2.y + step2.height));
+  if (prepAfterToggle && piano.y + piano.height > prepAfterToggle.y + prepAfterToggle.height + 10) {
+    const overflow = Math.round(piano.y + piano.height - (prepAfterToggle.y + prepAfterToggle.height));
     throw new Error(`Prep panel clipped piano at ${viewport.width}x${viewport.height} (overflow ${overflow}px)`);
   }
 
-  await page.locator("[data-testid='step-prep'] select").nth(1).selectOption("custom");
+  const scaleSelect = page.locator("[data-testid='step-prep'] select").nth(1);
+  if (!(await scaleSelect.isEnabled())) {
+    await manualToggle.check();
+  }
+  await scaleSelect.selectOption("custom");
+  await page.evaluate(() => window.scrollTo(0, 0));
   const customPiano = await page.locator("[data-testid='piano-picker']").boundingBox();
   if (!customPiano || customPiano.width < 100 || customPiano.height < 50) {
     throw new Error(`Custom piano picker failed to render at ${viewport.width}x${viewport.height}`);

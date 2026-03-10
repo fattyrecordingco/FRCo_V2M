@@ -104,6 +104,11 @@ npx tauri build --bundles msi
 Output:
 - `frontend/src-tauri/target/release/bundle/msi/*.msi`
 
+For an in-place local desktop update on the current machine:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install_local_desktop.ps1
+```
+
 ### macOS App + DMG (build on macOS)
 ```bash
 cd frontend

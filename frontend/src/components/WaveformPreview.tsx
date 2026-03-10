@@ -10,6 +10,7 @@ export default function WaveformPreview({ audioUrl }: Props) {
   const [canvasWidth, setCanvasWidth] = useState(680);
   const canvasHeight = 72;
   const [duration, setDuration] = useState(0);
+  const [peaks, setPeaks] = useState<Float32Array | null>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -22,64 +23,82 @@ export default function WaveformPreview({ audioUrl }: Props) {
   }, []);
 
   useEffect(() => {
-    if (!audioUrl || !canvasRef.current) return;
+    if (!audioUrl) {
+      setPeaks(null);
+      setDuration(0);
+      return;
+    }
     let disposed = false;
     const abortController = new AbortController();
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
 
-    const draw = async () => {
+    const loadPeaks = async () => {
       try {
         const res = await fetch(audioUrl, { signal: abortController.signal });
         const buf = await res.arrayBuffer();
         const ac = new AudioContext();
-        const audioBuffer = await ac.decodeAudioData(buf);
-        if (disposed) return;
-        const pixelRatio = window.devicePixelRatio || 1;
-        canvas.width = Math.floor(canvasWidth * pixelRatio);
-        canvas.height = Math.floor(canvasHeight * pixelRatio);
-        canvas.style.width = `${canvasWidth}px`;
-        canvas.style.height = `${canvasHeight}px`;
-        ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-        setDuration(audioBuffer.duration);
-        const data = audioBuffer.getChannelData(0);
-        const width = canvasWidth;
-        const height = canvasHeight;
-        const step = Math.max(1, Math.floor(data.length / width));
-        const css = getComputedStyle(document.documentElement);
-        const fill = css.getPropertyValue("--wave-bg").trim() || "#f3efe7";
-        const stroke = css.getPropertyValue("--wave-line").trim() || "#58d872";
-
-        ctx.clearRect(0, 0, width, height);
-        ctx.fillStyle = fill;
-        ctx.fillRect(0, 0, width, height);
-        ctx.strokeStyle = stroke;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        for (let i = 0; i < width; i += 1) {
-          let min = 1;
-          let max = -1;
-          for (let j = 0; j < step; j += 1) {
-            const datum = data[i * step + j] ?? 0;
-            if (datum < min) min = datum;
-            if (datum > max) max = datum;
+        try {
+          const audioBuffer = await ac.decodeAudioData(buf);
+          if (disposed) return;
+          setDuration(audioBuffer.duration);
+          const data = audioBuffer.getChannelData(0);
+          const peakCount = 1024;
+          const nextPeaks = new Float32Array(peakCount);
+          const step = Math.max(1, Math.floor(data.length / peakCount));
+          for (let i = 0; i < peakCount; i += 1) {
+            let peak = 0;
+            const start = i * step;
+            const stop = Math.min(data.length, start + step);
+            for (let j = start; j < stop; j += 1) {
+              peak = Math.max(peak, Math.abs(data[j] ?? 0));
+            }
+            nextPeaks[i] = peak;
           }
-          ctx.moveTo(i, (1 + min) * 0.5 * height);
-          ctx.lineTo(i, (1 + max) * 0.5 * height);
+          setPeaks(nextPeaks);
+        } finally {
+          await ac.close();
         }
-        ctx.stroke();
-        await ac.close();
       } catch {
         // Ignore transient decode/abort errors when source changes quickly.
       }
     };
-    void draw();
+    void loadPeaks();
     return () => {
       disposed = true;
       abortController.abort();
     };
-  }, [audioUrl, canvasWidth, canvasHeight]);
+  }, [audioUrl]);
+
+  useEffect(() => {
+    if (!canvasRef.current || !peaks) return;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const pixelRatio = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(canvasWidth * pixelRatio);
+    canvas.height = Math.floor(canvasHeight * pixelRatio);
+    canvas.style.width = `${canvasWidth}px`;
+    canvas.style.height = `${canvasHeight}px`;
+    ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+    const width = canvasWidth;
+    const height = canvasHeight;
+    const css = getComputedStyle(document.documentElement);
+    const fill = css.getPropertyValue("--wave-bg").trim() || "#f3efe7";
+    const stroke = css.getPropertyValue("--wave-line").trim() || "#58d872";
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = fill;
+    ctx.fillRect(0, 0, width, height);
+    ctx.strokeStyle = stroke;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 0; i < width; i += 1) {
+      const peakIdx = Math.min(peaks.length - 1, Math.floor((i / width) * peaks.length));
+      const peak = peaks[peakIdx] ?? 0;
+      ctx.moveTo(i, (1 - peak) * 0.5 * height);
+      ctx.lineTo(i, (1 + peak) * 0.5 * height);
+    }
+    ctx.stroke();
+  }, [canvasHeight, canvasWidth, peaks]);
 
   if (!audioUrl) {
     return (

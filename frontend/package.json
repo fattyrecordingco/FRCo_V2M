@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "desktop:build": "npm run build && cargo build --manifest-path src-tauri/Cargo.toml --release --features custom-protocol",
+    "desktop:install-local": "powershell -ExecutionPolicy Bypass -File ../scripts/install_local_desktop.ps1",
     "preview": "vite preview",
     "lint": "eslint . --ext ts,tsx --max-warnings 0",
     "layout:smoke": "node scripts/layout-smoke.mjs"

@@ -11,12 +11,20 @@ import {
   ensureBackendReady,
   fileUrl,
   getDemoFiles,
-  getSessionFiles,
+  getLatestRun,
   getSessions,
   renameFile,
   zipUrl
 } from "./lib/api";
-import { AnalyzeResponse, FileEntry, Mode, MonoPolyOverride, SessionSummary } from "./lib/types";
+import {
+  AnalyzeResponse,
+  FeelMode,
+  FileEntry,
+  Mode,
+  MonoPolyOverride,
+  SessionSummary,
+  WorkflowMode
+} from "./lib/types";
 
 const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const SCALE_PRESETS: Record<string, string[]> = {
@@ -142,32 +150,7 @@ async function blobToWavFile(blob: Blob, filename: string): Promise<File> {
 }
 
 function preprocessRecordedChannel(channel: Float32Array): Float32Array {
-  const out = new Float32Array(channel.length);
-  let mean = 0;
-  let peak = 0;
-  let avgAbs = 0;
-  for (let i = 0; i < channel.length; i += 1) {
-    const sample = channel[i] ?? 0;
-    mean += sample;
-    const abs = Math.abs(sample);
-    avgAbs += abs;
-    if (abs > peak) peak = abs;
-  }
-  mean /= Math.max(channel.length, 1);
-  avgAbs /= Math.max(channel.length, 1);
-  const gate = Math.max(avgAbs * 0.4, 0.0008);
-  const gain = peak > 1e-6 ? Math.min(5.0, 0.9 / peak) : 1.0;
-
-  for (let i = 0; i < channel.length; i += 1) {
-    const centered = (channel[i] ?? 0) - mean;
-    const abs = Math.abs(centered);
-    let denoised = centered;
-    if (abs < gate) denoised *= 0.18;
-    else denoised = Math.sign(centered) * (abs - gate * 0.35);
-    const amplified = denoised * gain;
-    out[i] = Math.tanh(amplified * 1.04);
-  }
-  return out;
+  return new Float32Array(channel);
 }
 
 function audioBufferToWavBlob(buffer: AudioBuffer): Blob {
@@ -247,13 +230,19 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [mode, setMode] = useState<Mode>("auto");
+  const [workflowMode, setWorkflowMode] = useState<WorkflowMode>("studio");
+  const [feelMode, setFeelMode] = useState<FeelMode>("balanced");
   const [autoPitchTime, setAutoPitchTime] = useState(false);
+  const [manualContext, setManualContext] = useState(false);
   const [rootNote, setRootNote] = useState("C");
   const [scale, setScale] = useState("major");
   const [customScaleNotes, setCustomScaleNotes] = useState<string[]>(["C", "D", "E", "G", "A"]);
   const [bpm, setBpm] = useState(120);
   const [timeSignature, setTimeSignature] = useState("4/4");
   const [monoPolyOverride, setMonoPolyOverride] = useState<MonoPolyOverride>("auto");
+  const [quantizeStrength, setQuantizeStrength] = useState(0.35);
+  const [preserveExpression, setPreserveExpression] = useState(true);
+  const [profileName, setProfileName] = useState("main_voice");
 
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
@@ -349,13 +338,15 @@ export default function App() {
 
   useEffect(() => {
     if (!result) return;
-    if (autoPitchTime) {
-      setBpm(Math.round(result.metadata.analysis.tempo_bpm));
-      setTimeSignature(result.metadata.analysis.time_signature);
-      setRootNote(result.metadata.analysis.root_note);
-      if (scale !== "custom") setScale(result.metadata.analysis.scale);
+    if (!manualContext || autoPitchTime) {
+      setBpm(Math.round(result.metadata.analysis.selected_bpm ?? result.metadata.analysis.tempo_bpm));
+      setTimeSignature(result.metadata.analysis.selected_time_signature ?? result.metadata.analysis.time_signature);
+      setRootNote(result.metadata.analysis.selected_root_note ?? result.metadata.analysis.root_note);
+      if (scale !== "custom") {
+        setScale(result.metadata.analysis.selected_scale ?? result.metadata.analysis.scale);
+      }
     }
-  }, [result, autoPitchTime, scale]);
+  }, [result, autoPitchTime, manualContext, scale]);
 
   useEffect(() => {
     const mediaDevices = navigator.mediaDevices;
@@ -371,6 +362,9 @@ export default function App() {
 
   const noteEvents = useMemo(() => {
     if (!result) return [];
+    if (result.mode_used === "control" || selectedPreview?.name.includes("controller")) {
+      return result.metadata.controller?.events?.notes ?? [];
+    }
     if (selectedPreview?.name.includes("chords")) {
       return result.metadata.chord_events.flatMap((chord) =>
         chord.pitches.map((pitch) => ({
@@ -577,14 +571,19 @@ export default function App() {
       const response = await analyzeAudio({
         file: inputFile,
         mode,
+        workflowMode,
+        feelMode,
         autoPitchTime,
-        rootNote,
-        scale,
+        rootNote: manualContext ? rootNote : undefined,
+        scale: manualContext ? scale : undefined,
         customScaleNotes,
-        bpm,
-        timeSignature,
+        bpm: manualContext ? bpm : undefined,
+        timeSignature: manualContext ? timeSignature : undefined,
         monoPolyOverride,
-        sessionId: sessionId ?? undefined
+        sessionId: sessionId ?? undefined,
+        quantizeStrength,
+        preserveExpression,
+        profileName
       });
       setResult(response);
       setSessionId(response.session_id);
@@ -610,12 +609,15 @@ export default function App() {
   }
 
   async function loadSessionFiles(targetSession: string, latestResult?: AnalyzeResponse) {
-    const files = await getSessionFiles(targetSession);
-    setMidiFiles(files.midi);
-    setAudioFiles(files.audio);
-    if (!latestResult) {
-      setResult((prev) => prev);
-      setSelectedPreview((files.midi[0] ?? files.audio[0] ?? null) as FileEntry | null);
+    const currentResult = latestResult ?? (await getLatestRun(targetSession));
+    setResult(currentResult);
+    setMidiFiles(currentResult.midi_files);
+    setAudioFiles(currentResult.audio_files);
+    const nextPreview = currentResult.midi_files[0] ?? currentResult.audio_files[0] ?? null;
+    setSelectedPreview(nextPreview);
+    const nextAudio = nextPreview?.kind === "audio" ? fileUrl(nextPreview.url) : currentResult.audio_files[0]?.url;
+    if (nextAudio) {
+      setAudioUrl(fileUrl(nextAudio));
     }
   }
 
@@ -655,6 +657,8 @@ export default function App() {
     await Tone.start();
     Tone.Transport.stop();
     Tone.Transport.cancel();
+    const previewNotes =
+      result.mode_used === "control" ? result.metadata.controller?.events?.notes ?? [] : result.metadata.note_events;
 
     const hasSolo = Object.values(trackState).some((track) => track.solo);
     const canPlayTrack = (track: "notes" | "chords" | "drums") => {
@@ -672,7 +676,7 @@ export default function App() {
     const hat = new Tone.MetalSynth().toDestination();
 
     if (canPlayTrack("notes")) {
-      result.metadata.note_events.forEach((note) => {
+      previewNotes.forEach((note) => {
         Tone.Transport.schedule((time) => {
           notesSynth.triggerAttackRelease(
             Tone.Frequency(note.pitch, "midi").toFrequency(),
@@ -713,7 +717,7 @@ export default function App() {
     }
 
     const totalLength = Math.max(
-      ...result.metadata.note_events.map((event) => event.end),
+      ...previewNotes.map((event) => event.end),
       ...result.metadata.chord_events.map((event) => event.end),
       ...result.metadata.drum_events.map((event) => event.end),
       2
@@ -744,6 +748,37 @@ export default function App() {
   const activeSessionId = activeSession ?? sessionId ?? "";
   const canGenerate = Boolean(inputFile) && !processing;
   const recentSessions = useMemo(() => sessions.slice(0, 4), [sessions]);
+  const analysis = result?.metadata.analysis;
+  const primaryConfidence = result
+    ? Math.max(...Object.values(result.metadata.detection_confidence), 0)
+    : 0;
+  const roleLabel = result?.metadata.suggestions?.role ?? "awaiting input";
+  const creativeSuggestions = result
+    ? [
+        ...(result.metadata.suggestions?.production ?? []),
+        ...(result.metadata.suggestions?.sound_design ?? []),
+        ...(result.metadata.suggestions?.arrangement ?? [])
+      ].slice(0, 4)
+    : [];
+  const controllerSummary = result?.metadata.controller?.summary;
+  const statusCards = [
+    {
+      label: "Latency",
+      value: analysis?.processing_latency_ms ? `${Math.round(analysis.processing_latency_ms)} ms` : "pending"
+    },
+    {
+      label: "Confidence",
+      value: result ? `${Math.round(primaryConfidence * 100)}%` : "pending"
+    },
+    {
+      label: "Role",
+      value: roleLabel.replace(/_/g, " ")
+    },
+    {
+      label: "Detected",
+      value: analysis ? `${analysis.root_note} ${analysis.scale} / ${Math.round(analysis.tempo_bpm)} BPM` : "pending"
+    }
+  ];
 
   return (
     <main className={`app-shell theme-${theme}`} data-theme={theme}>
@@ -883,6 +918,13 @@ export default function App() {
                 >
                   Auto
                 </button>
+                <button
+                  type="button"
+                  className={`btn ${mode === "control" ? "btn-primary" : "btn-secondary"}`}
+                  onClick={() => setMode("control")}
+                >
+                  Control
+                </button>
               </div>
 
               <label className="toggle-row toggle-compact">
@@ -910,10 +952,30 @@ export default function App() {
               </button>
             </div>
 
+            <div className="engine-banner">
+              <div>
+                <span className="engine-banner-kicker">Context</span>
+                <strong>{manualContext ? "Manual lock enabled" : "Detected from analysis"}</strong>
+              </div>
+              <label className="toggle-inline">
+                Manual
+                <input
+                  type="checkbox"
+                  checked={manualContext}
+                  onChange={(event) => setManualContext(event.target.checked)}
+                />
+              </label>
+            </div>
+
             <div className="prep-param-strip">
               <div className="param-field">
                 <label className="field-label">Root</label>
-                <select className="input param-input" value={rootNote} onChange={(event) => setRootNote(event.target.value)}>
+                <select
+                  className="input param-input"
+                  value={rootNote}
+                  disabled={!manualContext}
+                  onChange={(event) => setRootNote(event.target.value)}
+                >
                   {NOTE_NAMES.map((note) => (
                     <option key={note} value={note}>
                       {note}
@@ -923,7 +985,12 @@ export default function App() {
               </div>
               <div className="param-field">
                 <label className="field-label">Scale</label>
-                <select className="input param-input" value={scale} onChange={(event) => setScale(event.target.value)}>
+                <select
+                  className="input param-input"
+                  value={scale}
+                  disabled={!manualContext}
+                  onChange={(event) => setScale(event.target.value)}
+                >
                   {Object.keys(SCALE_PRESETS).map((label) => (
                     <option key={label} value={label}>
                       {label}
@@ -940,6 +1007,7 @@ export default function App() {
                   value={bpm}
                   min={20}
                   max={320}
+                  disabled={!manualContext}
                   onChange={(event) => setBpm(Number(event.target.value))}
                 />
               </div>
@@ -949,6 +1017,7 @@ export default function App() {
                   type="text"
                   className="input param-input"
                   value={timeSignature}
+                  disabled={!manualContext}
                   onChange={(event) => setTimeSignature(event.target.value)}
                 />
               </div>
@@ -966,12 +1035,74 @@ export default function App() {
               </div>
             </div>
 
-            <PianoScalePicker
-              selected={scale === "custom" ? customScaleNotes : suggestedScaleNotes}
-              onChange={handleScaleNotesChange}
-            />
+            <div className="prep-engine-strip">
+              <div className="param-field">
+                <label className="field-label">Workflow</label>
+                <select
+                  className="input param-input"
+                  value={workflowMode}
+                  onChange={(event) => setWorkflowMode(event.target.value as WorkflowMode)}
+                >
+                  <option value="live">Live</option>
+                  <option value="hybrid">Hybrid</option>
+                  <option value="studio">Studio</option>
+                </select>
+              </div>
+              <div className="param-field">
+                <label className="field-label">Feel</label>
+                <select
+                  className="input param-input"
+                  value={feelMode}
+                  onChange={(event) => setFeelMode(event.target.value as FeelMode)}
+                >
+                  <option value="preserve">Preserve</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="tight">Tight</option>
+                </select>
+              </div>
+              <div className="param-field param-field-wide">
+                <label className="field-label">Quantize</label>
+                <label className="slider-stack">
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={quantizeStrength}
+                    onChange={(event) => setQuantizeStrength(Number(event.target.value))}
+                  />
+                  <span>{Math.round(quantizeStrength * 100)}%</span>
+                </label>
+              </div>
+              <div className="param-field">
+                <label className="field-label">Profile</label>
+                <input
+                  type="text"
+                  className="input param-input"
+                  value={profileName}
+                  onChange={(event) => setProfileName(event.target.value)}
+                />
+              </div>
+              <label className="toggle-row">
+                <span>Expression</span>
+                <input
+                  type="checkbox"
+                  checked={preserveExpression}
+                  onChange={(event) => setPreserveExpression(event.target.checked)}
+                />
+              </label>
+            </div>
 
-            {scale !== "custom" && <div className="scale-note-summary">Preset: {suggestedScaleNotes.join(" - ")}</div>}
+            {manualContext && (
+              <>
+                <PianoScalePicker
+                  selected={scale === "custom" ? customScaleNotes : suggestedScaleNotes}
+                  onChange={handleScaleNotesChange}
+                />
+
+                {scale !== "custom" && <div className="scale-note-summary">Preset: {suggestedScaleNotes.join(" - ")}</div>}
+              </>
+            )}
           </section>
 
           <section className="panel step-panel step-preview frame-fit" data-testid="step-preview">
@@ -987,10 +1118,48 @@ export default function App() {
                       <span className="font-semibold">Preview:</span>
                       <span className="truncate">{previewName}</span>
                     </div>
+                    <div className="analysis-summary-grid">
+                      {statusCards.map((card) => (
+                        <div key={card.label} className="analysis-card">
+                          <span>{card.label}</span>
+                          <strong>{card.value}</strong>
+                        </div>
+                      ))}
+                    </div>
                     <MidiMiniView notes={noteEvents} />
+                    {creativeSuggestions.length > 0 && (
+                      <div className="suggestion-list">
+                        {creativeSuggestions.map((suggestion) => (
+                          <div key={`${suggestion.title}-${suggestion.reason}`} className="suggestion-card">
+                            <strong>{suggestion.title}</strong>
+                            <span>{suggestion.reason}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   <div className="preview-side">
+                    <div className="preview-insight-panel">
+                      <div className="preview-insight-row">
+                        <span>Workflow</span>
+                        <strong>{workflowMode}</strong>
+                      </div>
+                      <div className="preview-insight-row">
+                        <span>Quantize</span>
+                        <strong>{Math.round(quantizeStrength * 100)}%</strong>
+                      </div>
+                      <div className="preview-insight-row">
+                        <span>Profile</span>
+                        <strong>{profileName || "none"}</strong>
+                      </div>
+                      {controllerSummary && (
+                        <div className="preview-insight-row">
+                          <span>Controller</span>
+                          <strong>{String(controllerSummary.active_ratio ?? "ready")}</strong>
+                        </div>
+                      )}
+                    </div>
                     <div className="instrument-grid">
                       <button
                         type="button"

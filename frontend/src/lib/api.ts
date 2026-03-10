@@ -1,4 +1,12 @@
-import { AnalyzeResponse, FileEntry, Mode, MonoPolyOverride, SessionSummary } from "./types";
+import {
+  AnalyzeResponse,
+  FeelMode,
+  FileEntry,
+  Mode,
+  MonoPolyOverride,
+  SessionSummary,
+  WorkflowMode
+} from "./types";
 
 const API_BASE = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000/api/v1";
 const API_HOST = API_BASE.replace("/api/v1", "");
@@ -6,14 +14,19 @@ const API_HOST = API_BASE.replace("/api/v1", "");
 export interface AnalyzeRequest {
   file: File;
   mode: Mode;
+  workflowMode: WorkflowMode;
+  feelMode: FeelMode;
   autoPitchTime: boolean;
-  rootNote: string;
-  scale: string;
+  rootNote?: string;
+  scale?: string;
   customScaleNotes: string[];
   bpm?: number;
   timeSignature?: string;
   monoPolyOverride: MonoPolyOverride;
   sessionId?: string;
+  quantizeStrength: number;
+  preserveExpression: boolean;
+  profileName?: string;
 }
 
 async function safeJson<T>(res: Response): Promise<T> {
@@ -71,14 +84,19 @@ export async function analyzeAudio(payload: AnalyzeRequest): Promise<AnalyzeResp
   const form = new FormData();
   form.append("file", payload.file);
   form.append("mode", payload.mode);
+  form.append("workflow_mode", payload.workflowMode);
+  form.append("feel_mode", payload.feelMode);
   form.append("auto_pitch_time", String(payload.autoPitchTime));
-  form.append("root_note", payload.rootNote);
-  form.append("scale", payload.scale);
+  if (payload.rootNote) form.append("root_note", payload.rootNote);
+  if (payload.scale) form.append("scale", payload.scale);
   form.append("custom_scale_notes", payload.customScaleNotes.join(","));
   form.append("mono_poly_override", payload.monoPolyOverride);
+  form.append("quantize_strength", String(payload.quantizeStrength));
+  form.append("preserve_expression", String(payload.preserveExpression));
   if (payload.bpm) form.append("bpm", String(payload.bpm));
   if (payload.timeSignature) form.append("time_signature", payload.timeSignature);
   if (payload.sessionId) form.append("session_id", payload.sessionId);
+  if (payload.profileName) form.append("profile_name", payload.profileName);
   const response = await fetchWithTimeout(`${API_BASE}/analyze`, { method: "POST", body: form }, 300000);
   return safeJson<AnalyzeResponse>(response);
 }
@@ -104,6 +122,11 @@ export async function getSessions(): Promise<SessionSummary[]> {
 export async function getSessionFiles(sessionId: string): Promise<{ midi: FileEntry[]; audio: FileEntry[] }> {
   const response = await fetchWithTimeout(`${API_BASE}/sessions/${sessionId}/files`, { method: "GET" }, 20000);
   return safeJson<{ midi: FileEntry[]; audio: FileEntry[] }>(response);
+}
+
+export async function getLatestRun(sessionId: string): Promise<AnalyzeResponse> {
+  const response = await fetchWithTimeout(`${API_BASE}/sessions/${sessionId}/latest-run`, { method: "GET" }, 20000);
+  return safeJson<AnalyzeResponse>(response);
 }
 
 export async function getDemoFiles(): Promise<Array<{ name: string; url: string }>> {
